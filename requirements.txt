@@ -1,2 +1,4 @@
 torch==2.0.0
 torchtext==0.15.1
+portalocker==2.7.0
+pandas==2.0.1
