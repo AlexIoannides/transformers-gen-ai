@@ -1,4 +1,4 @@
-from modelling.data import get_data
+from .data import BasePreprocessor, FilmReviewDataset, get_data
 
 
-__all__ = ["get_data"]
+__all__ = ["BasePreprocessor", "FilmReviewDataset", "get_data"]
