@@ -1,4 +1,8 @@
-from .data import BasePreprocessor, FilmReviewDataset, get_data
+from .data import (
+    BasePreprocessor, FilmReviewSentiment, FilmReviewSequences, IMDBTokenizer
+)
 
 
-__all__ = ["BasePreprocessor", "FilmReviewDataset", "get_data"]
+__all__ = [
+    "BasePreprocessor", "FilmReviewSentiment", "FilmReviewSequences", "IMDBTokenizer"
+]

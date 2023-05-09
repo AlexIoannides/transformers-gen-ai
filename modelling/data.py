@@ -60,6 +60,36 @@ class FilmReviewSentiment(Dataset):
             yield row.review, row.sentiment
 
 
+class FilmReviewSequences(Dataset):
+    """IMDB film reviews training generative models."""
+
+    def __init__(self, split: str = "train", sequence_length: int = 40):
+        train_data, test_data = get_data()
+        if split == "train":
+            reviews = " ".join(train_data["review"].tolist())
+        elif split == "test":
+            reviews = " ".join(test_data["review"].tolist())
+        elif split == "all":
+            all_data = concat([train_data, test_data], ignore_index=True)
+            reviews = " ".join(all_data["review"].tolist())
+        else:
+            raise ValueError("split must be one of 'train' or 'test'.")
+        tokenizer = IMDBTokenizer()
+        self._tokenised_reviews = tokenizer(reviews)
+        self._chunk_size = sequence_length + 1
+
+    def __len__(self) -> int:
+        return len(self._tokenised_reviews) - self._chunk_size
+
+    def __getitem__(self, idx: int) -> Tuple[tensor, tensor]:
+        tokenized_chunk = self._tokenised_reviews[idx:(idx+self._chunk_size)]
+        return (tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
+
+    def __iter__(self) -> Iterable[Tuple[tensor, tensor]]:
+        for n in range(len(self)):
+            yield self[n]
+
+
 class BasePreprocessor:
     """Basic pre-processor for use as a collate_fn for DataLoaders."""
 
@@ -79,12 +109,10 @@ class IMDBTokenizer:
 
     def __init__(self):
         train_and_test = concat(get_data(), ignore_index=True)
-        reviews = train_and_test["review"].tolist()
-        reviews = re.sub(r"[\.\?](\s|$)", " endofsentence ", " ".join(reviews))
+        reviews = " ".join(train_and_test["review"].tolist())
 
         token_counter = Counter(self._tokenize(reviews))
         token_freqs = sorted(token_counter.items(), key=lambda e: e[1], reverse=True)
-
         _vocab = vocab(OrderedDict(token_freqs))
         _vocab.insert_token("<pad>", 0)
         _vocab.insert_token("<unk>", 1)
@@ -93,11 +121,12 @@ class IMDBTokenizer:
         self.vocab_size = len(self.vocab)
 
     def __call__(self, text: str) -> List[int]:
-        return [self.vocab(token) for token in self._tokenize(text)]
+        return self.vocab(self._tokenize(text))
 
     @staticmethod
     def _tokenize(text: str) -> List[str]:
         """Basic tokenizer that can strip HTML."""
+        text = re.sub(r"[\.\?](\s|$)", " endofsentence ", text)
         text = re.sub(r"<[^>]*>", "", text)
         emoticons = re.findall(
             r"(?::|;|=)(?:-)?(?:\)|\(|D|P)", text.lower()
@@ -109,6 +138,17 @@ class IMDBTokenizer:
 
 
 if __name__ == "__main__":
+    # data pipeline: generative model training data
+    train_data = FilmReviewSequences()
+    train_data_loader = DataLoader(train_data, batch_size=2)
+    for batch in train_data_loader:
+        print(batch)
+        break
+
+    # data pipeline: sentiment classification data pipeline
     train_data = FilmReviewSentiment("train")
-    preproc = BasePreprocessor(train_data)
+    preproc = BasePreprocessor()
     train_data_loader = DataLoader(train_data, batch_size=4, collate_fn=preproc)
+    for batch in train_data_loader:
+        print(batch)
+        break
