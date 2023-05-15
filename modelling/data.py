@@ -76,6 +76,7 @@ class FilmReviewSequences(Dataset):
             raise ValueError("split must be one of 'train' or 'test'.")
         tokenizer = IMDBTokenizer()
         self._tokenised_reviews = tokenizer(reviews)
+        self.vocab_size = tokenizer.vocab_size
         self._chunk_size = sequence_length + 1
 
     def __len__(self) -> int:
