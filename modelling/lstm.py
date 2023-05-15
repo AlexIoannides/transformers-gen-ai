@@ -2,7 +2,7 @@
 from typing import Tuple
 
 import torch.nn as nn
-from torch import tensor, zeros
+from torch import device, tensor, zeros
 
 
 class NextWordPrediction(nn.Module):
@@ -21,7 +21,7 @@ class NextWordPrediction(nn.Module):
         out = self._linear(out).reshape(out.shape[0], -1)
         return out, hidden, cell
 
-    def initialise(self, batch_size: int) -> Tuple[tensor, tensor]:
-        hidden = zeros(1, batch_size, self._size_hidden)
-        cell = zeros(1, batch_size, self._size_hidden)
+    def initialise(self, batch_size: int, device_: device) -> Tuple[tensor, tensor]:
+        hidden = zeros(1, batch_size, self._size_hidden, device=device_)
+        cell = zeros(1, batch_size, self._size_hidden, device=device_)
         return hidden, cell
