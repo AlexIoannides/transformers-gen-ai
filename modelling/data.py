@@ -6,27 +6,27 @@ from pathlib import Path
 from typing import Iterable, List, Tuple
 
 from pandas import concat, DataFrame
-from torch import tensor
+from torch import tensor, Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
 from torch.utils.data import Dataset, DataLoader
 
-TORCH_DATA_CACHE_PATH = Path(".data")
+TORCH_DATA_STORAGE_PATH = Path(".data")
 
 
 def get_data() -> Tuple[DataFrame, DataFrame]:
     """Download raw data and convert to Pandas DataFrame."""
-    if not TORCH_DATA_CACHE_PATH.exists():
+    if not TORCH_DATA_STORAGE_PATH.exists():
         warnings.warn("Downloading IMDB data - this may take a minute or two.")
     train_data = DataFrame(
-        IMDB(str(TORCH_DATA_CACHE_PATH), split="train"),
+        IMDB(str(TORCH_DATA_STORAGE_PATH), split="train"),
         columns=["sentiment", "review"]
     )
     train_data["sentiment"] = train_data["sentiment"].apply(lambda e: e - 1)
 
     test_data = DataFrame(
-        IMDB(str(TORCH_DATA_CACHE_PATH), split="test"),
+        IMDB(str(TORCH_DATA_STORAGE_PATH), split="test"),
         columns=["sentiment", "review"]
     )
     test_data["sentiment"] = test_data["sentiment"].apply(lambda e: e - 1)
@@ -82,11 +82,11 @@ class FilmReviewSequences(Dataset):
     def __len__(self) -> int:
         return len(self._tokenised_reviews) - self._chunk_size
 
-    def __getitem__(self, idx: int) -> Tuple[tensor, tensor]:
+    def __getitem__(self, idx: int) -> Tuple[Tensor, Tensor]:
         tokenized_chunk = self._tokenised_reviews[idx:(idx+self._chunk_size)]
-        return (tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
+        return (Tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
 
-    def __iter__(self) -> Iterable[Tuple[tensor, tensor]]:
+    def __iter__(self) -> Iterable[Tuple[Tensor, Tensor]]:
         for n in range(len(self)):
             yield self[n]
 
@@ -97,7 +97,7 @@ class BasePreprocessor:
     def __init__(self):
         self._tokenizer = IMDBTokenizer()
 
-    def __call__(self, batch: List[Tuple[str, int]]) -> Tuple[tensor, tensor, tensor]:
+    def __call__(self, batch: List[Tuple[str, int]]) -> Tuple[Tensor, Tensor, Tensor]:
         y = [tensor(e) for _, e in batch]
         x = [tensor(self._tokenizer(review)) for review, _ in batch]
         x_padded = pad_sequence(x, batch_first=True)

@@ -1,4 +1,5 @@
 .venv
 .data
+.models
 .pytype
 __pycache__
