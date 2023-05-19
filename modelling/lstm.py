@@ -79,6 +79,8 @@ if __name__ == "__main__":
     from .data import FilmReviewSequences
     from .utils import save_model
 
+    MODEL_NAME = "lstm_next_word_gen"
+
     SIZE_EMBED = 256 * 2
     SIZE_HIDDEN = 512 * 2
 
@@ -91,4 +93,4 @@ if __name__ == "__main__":
     data_loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
     model = NextWordPrediction(data.vocab_size, SIZE_EMBED, SIZE_HIDDEN)
     model_loss = train_next_word_prediction(model, data_loader, EPOCHS, LEARNING_RATE)
-    save_model(model, name="lstm_next_word_gen", loss=model_loss)
+    save_model(model, name=MODEL_NAME, loss=model_loss)

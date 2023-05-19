@@ -1,12 +1,13 @@
 """Downloading and pre-processing IMDB film review data."""
 import re
 import warnings
+from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
 from pandas import concat, DataFrame
-from torch import tensor, Tensor
+from torch import int64, tensor, Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
@@ -21,13 +22,13 @@ def get_data() -> Tuple[DataFrame, DataFrame]:
         warnings.warn("Downloading IMDB data - this may take a minute or two.")
     train_data = DataFrame(
         IMDB(str(TORCH_DATA_STORAGE_PATH), split="train"),
-        columns=["sentiment", "review"]
+        columns=["sentiment", "review"],
     )
     train_data["sentiment"] = train_data["sentiment"].apply(lambda e: e - 1)
 
     test_data = DataFrame(
         IMDB(str(TORCH_DATA_STORAGE_PATH), split="test"),
-        columns=["sentiment", "review"]
+        columns=["sentiment", "review"],
     )
     test_data["sentiment"] = test_data["sentiment"].apply(lambda e: e - 1)
 
@@ -83,8 +84,8 @@ class FilmReviewSequences(Dataset):
         return len(self._tokenised_reviews) - self._chunk_size
 
     def __getitem__(self, idx: int) -> Tuple[Tensor, Tensor]:
-        tokenized_chunk = self._tokenised_reviews[idx:(idx+self._chunk_size)]
-        return (Tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
+        tokenized_chunk = self._tokenised_reviews[idx:(idx + self._chunk_size)]
+        return (tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
 
     def __iter__(self) -> Iterable[Tuple[Tensor, Tensor]]:
         for n in range(len(self)):
@@ -105,7 +106,22 @@ class BasePreprocessor:
         return x_padded, y, x_lens
 
 
-class IMDBTokenizer:
+class _Tokenizer(ABC):
+    """Abstract base class for text tokenizers."""
+
+    def __call__(self, text: str) -> List[int]:
+        return self.text2tokens(text)
+
+    @abstractmethod
+    def text2tokens(self, text: str) -> List[int]:
+        pass
+
+    @abstractmethod
+    def tokens2text(self, token: List[int]) -> str:
+        pass
+
+
+class IMDBTokenizer(_Tokenizer):
     """Word to integer tokenisation for use with any dataset or model."""
 
     def __init__(self):
@@ -121,19 +137,21 @@ class IMDBTokenizer:
         self.vocab = _vocab
         self.vocab_size = len(self.vocab)
 
-    def __call__(self, text: str) -> List[int]:
+    def text2tokens(self, text: str) -> List[int]:
         return self.vocab(self._tokenize(text))
+
+    def tokens2text(self, tokens: List[int]) -> str:
+        return self.vocab.lookup_tokens(tokens)
 
     @staticmethod
     def _tokenize(text: str) -> List[str]:
         """Basic tokenizer that can strip HTML."""
         text = re.sub(r"[\.\?](\s|$)", " endofsentence ", text)
         text = re.sub(r"<[^>]*>", "", text)
-        emoticons = re.findall(
-            r"(?::|;|=)(?:-)?(?:\)|\(|D|P)", text.lower()
+        emoticons = re.findall(r"(?::|;|=)(?:-)?(?:\)|\(|D|P)", text.lower())
+        text = re.sub(r"[\W]+", " ", text.lower()) + " ".join(emoticons).replace(
+            "-", ""
         )
-        text = re.sub(r"[\W]+", " ", text.lower()) +\
-            " ".join(emoticons).replace("-", "")
         tokenized = text.split()
         return tokenized
 
