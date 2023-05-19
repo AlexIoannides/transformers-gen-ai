@@ -13,7 +13,7 @@ from .utils import get_device
 
 
 class NextWordPrediction(Module):
-    """LTSM for predicting the next token in a sequence."""
+    """LSTM for predicting the next token in a sequence."""
 
     def __init__(self, size_vocab: int, size_embed: int, size_hidden: int):
         super().__init__()

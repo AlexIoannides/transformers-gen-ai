@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable, List, Tuple
 
 from pandas import concat, DataFrame
-from torch import int64, tensor, Tensor
+from torch import tensor, Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
