@@ -34,7 +34,7 @@ class NextWordPrediction(Module):
         return hidden, cell
 
 
-def train_next_word_prediction(
+def train(
     model: Module,
     sequence_data: DataLoader,
     n_epochs: int,
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     data = FilmReviewSequences(sequence_length=SEQUENCE_LENGTH)
     data_loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
     model = NextWordPrediction(data.vocab_size, SIZE_EMBED, SIZE_HIDDEN)
-    model_loss = train_next_word_prediction(model, data_loader, EPOCHS, LEARNING_RATE)
+    model_loss = train(model, data_loader, EPOCHS, LEARNING_RATE)
     save_model(model, name=MODEL_NAME, loss=model_loss)
 
     # generate text
