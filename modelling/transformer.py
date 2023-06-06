@@ -1,10 +1,19 @@
-"""Language modelling using RNNs."""
+"""Language modelling using multi-head attention transformers."""
 from datetime import datetime
-from typing import Dict, Tuple
+from typing import Dict
 
-from torch import device, manual_seed, tensor, Tensor, zeros
+from torch import (
+    arange, cos, device, exp, log, manual_seed, tensor, sin, sqrt, Tensor, zeros
+)
 from torch.distributions import Categorical
-from torch.nn import CrossEntropyLoss, Embedding, Linear, Module, LSTM
+from torch.nn import (
+    CrossEntropyLoss,
+    Dropout,
+    Embedding,
+    Linear,
+    Module,
+    TransformerDecoderLayer
+)
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 
@@ -12,26 +21,46 @@ from .data import _Tokenizer
 from .utils import get_device
 
 
-class NextWordPredictionRNN(Module):
-    """LSTM for predicting the next token in a sequence."""
+class NextWordPredictionTransformer(Module):
+    """Transformer for predicting the next tokens in a sequence."""
 
-    def __init__(self, size_vocab: int, size_embed: int, size_hidden: int):
+    def __init__(self, size_vocab: int, size_embed: int, n_heads: int = 1):
         super().__init__()
-        self._size_hidden = size_hidden
+        self._size_vocab = size_vocab
+        self._size_embed = size_embed
+        self._position_encoder = PositionalEncoding(size_embed)
         self._embedding = Embedding(size_vocab, size_embed)
-        self._lstm = LSTM(size_embed, size_hidden, batch_first=True)
-        self._linear = Linear(size_hidden, size_vocab)
+        self._decoder = TransformerDecoderLayer(size_embed, n_heads, batch_first=True)
+        self._linear = Linear(size_embed, size_vocab)
 
-    def forward(self, x: Tensor, hidden: Tensor, cell: Tensor) -> Tensor:
-        out = self._embedding(x).unsqueeze(1)
-        out, (hidden, cell) = self._lstm(out, (hidden, cell))
-        out = self._linear(out).reshape(out.shape[0], -1)
-        return out, hidden, cell
+    def forward(self, x: Tensor) -> Tensor:
+        out = self._embedding(x) * sqrt(tensor(self._size_embed))
+        out = self._position_encoder(out)
+        out = self._decoder(out, out, tgt_is_causal=True, memory_is_causal=True)
+        out = self._linear(out)
+        return out
 
-    def initialise(self, batch_size: int, device_: device) -> Tuple[Tensor, Tensor]:
-        hidden = zeros(1, batch_size, self._size_hidden, device=device_)
-        cell = zeros(1, batch_size, self._size_hidden, device=device_)
-        return hidden, cell
+
+class PositionalEncoding(Module):
+
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = Dropout(p=dropout)
+
+        position = arange(max_len).unsqueeze(1)
+        div_term = exp(arange(0, d_model, 2) * (-log(tensor(10000.0)) / d_model))
+        pos_encoding = zeros(max_len, 1, d_model)
+        pos_encoding[:, 0, 0::2] = sin(position * div_term)
+        pos_encoding[:, 0, 1::2] = cos(position * div_term)
+        self.register_buffer('pos_encoding', pos_encoding)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+        """
+        x = x + self.pos_encoding[:x.size(0)]
+        return self.dropout(x)
 
 
 def train(
@@ -41,7 +70,7 @@ def train(
     learning_rate: float = 0.001,
     random_seed: int = 42,
 ) -> Dict[int, float]:
-    """Training loop for LTSM flavoured RNNs on sequence data."""
+    """Training loop for transformer decoder."""
     manual_seed(random_seed)
     device = get_device()
 
@@ -58,20 +87,15 @@ def train(
         x_batch = x_batch.to(device, non_blocking=True)
         y_batch = y_batch.to(device, non_blocking=True)
 
-        batch_size, sequence_length = x_batch.shape
+        y_pred = model(x_batch)
+        loss = loss_func(y_pred.permute(0, 2, 1), y_batch)
 
-        loss = tensor(0.0, device=device)
         optimizer.zero_grad()
-
-        hidden, cell = model.initialise(batch_size, device)
-        for n in range(sequence_length):
-            y_pred, hidden, cell = model(x_batch[:, n], hidden, cell)
-            loss += loss_func(y_pred, y_batch[:, n])
         loss.backward()
         optimizer.step()
 
-        avg_loss = loss / sequence_length
-        train_loss[epoch] = avg_loss.item()
+        avg_loss = loss.item()
+        train_loss[epoch] = loss.item()
 
         if epoch % 10 == 0:
             timestamp = datetime.now().isoformat(timespec="seconds")
@@ -81,7 +105,7 @@ def train(
 
 
 def generate(
-    model: NextWordPredictionRNN,
+    model: NextWordPredictionTransformer,
     prompt: str,
     tokenizer: _Tokenizer,
     output_length: int = 40,
@@ -94,15 +118,12 @@ def generate(
 
     model.to(device_)
     model.eval()
-    hidden, cell = model.initialise(1, device_)
 
     prompt_tokens = tensor(tokenizer(prompt), device=device_).view(-1, 1)
-    for token in prompt_tokens[:-1]:
-        _, hidden, cell = model(token, hidden, cell)
 
     new_token_sequence = [prompt_tokens[-1]]
     for _ in range(output_length):
-        token_logits, hidden, cell = model(new_token_sequence[-1], hidden, cell)
+        token_logits = model(new_token_sequence[-1])
         token_pred = Categorical(logits=temperature * token_logits).sample()
         new_token_sequence += [token_pred]
 
@@ -115,10 +136,9 @@ if __name__ == "__main__":
     from .data import FilmReviewSequences
     from .utils import save_model
 
-    MODEL_NAME = "lstm_next_word_gen"
+    MODEL_NAME = "decoder_next_word_gen"
 
     SIZE_EMBED = 256 * 2
-    SIZE_HIDDEN = 512 * 2
 
     N_EPOCHS = 1000
     BATCH_SIZE = 64
@@ -127,7 +147,7 @@ if __name__ == "__main__":
 
     data = FilmReviewSequences(sequence_length=SEQUENCE_LENGTH)
     data_loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-    model = NextWordPredictionRNN(data.vocab_size, SIZE_EMBED, SIZE_HIDDEN)
+    model = NextWordPredictionTransformer(data.vocab_size, SIZE_EMBED)
     train_loss = train(model, data_loader, N_EPOCHS, LEARNING_RATE)
     save_model(model, name=MODEL_NAME, loss=train_loss[N_EPOCHS])
 
@@ -135,11 +155,11 @@ if __name__ == "__main__":
     from .data import IMDBTokenizer
     from .utils import load_model
 
-    MODEL_NAME = "lstm_next_word_gen"
+    MODEL_NAME = "decoder_next_word_gen"
     PROMPT = "This movie was a total waste of time"
     TEMPERATURE = 1.0
 
     tokenizer = IMDBTokenizer()
-    model: NextWordPredictionRNN = load_model(MODEL_NAME)
+    model: NextWordPredictionTransformer = load_model(MODEL_NAME)
     new_text = generate(model, PROMPT, tokenizer, temperature=TEMPERATURE)
     print(new_text)
