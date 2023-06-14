@@ -1,4 +1,5 @@
 """Language modelling using multi-head attention transformers."""
+from __future__ import annotations
 from datetime import datetime
 from typing import Dict
 
@@ -14,6 +15,7 @@ from torch.nn import (
     Module,
     TransformerDecoderLayer
 )
+from torch.nn.init import xavier_uniform_
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 
@@ -32,6 +34,7 @@ class NextWordPredictionTransformer(Module):
         self._embedding = Embedding(size_vocab, size_embed)
         self._decoder = TransformerDecoderLayer(size_embed, n_heads, batch_first=True)
         self._linear = Linear(size_embed, size_vocab)
+        self._init_weights()
 
     def forward(self, x: Tensor) -> Tensor:
         out = self._embedding(x) * sqrt(tensor(self._size_embed))
@@ -39,6 +42,12 @@ class NextWordPredictionTransformer(Module):
         out = self._decoder(out, out, tgt_is_causal=True, memory_is_causal=True)
         out = self._linear(out)
         return out
+
+    def _init_weights(self) -> NextWordPredictionTransformer:
+        for p in self.parameters():
+            if p.dim() > 1:
+                xavier_uniform_(p)
+        return self
 
 
 class PositionalEncoding(Module):
@@ -62,7 +71,7 @@ class PositionalEncoding(Module):
         """
         seq_len = x.size(1)
         x = x + self.pos_encoding[:seq_len]
-        return self.dropout(x)
+        return self._dropout(x)
 
 
 def train(
@@ -96,12 +105,12 @@ def train(
         loss.backward()
         optimizer.step()
 
-        avg_loss = loss.item()
-        train_loss[epoch] = loss.item()
+        avg_loss = loss
+        train_loss[epoch] = avg_loss.item()
 
-        if epoch % 10 == 0:
+        if epoch % 10 == 0 or epoch == n_epochs:
             timestamp = datetime.now().isoformat(timespec="seconds")
-            print(f"{timestamp} epoch {epoch} loss: {avg_loss.item():.4f}")
+            print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
 
     return train_loss
 
@@ -121,15 +130,14 @@ def generate(
     model.to(device_)
     model.eval()
 
-    prompt_tokens = tensor(tokenizer(prompt), device=device_).view(-1, 1)
-
-    new_token_sequence = [prompt_tokens[-1]]
+    new_token_sequence = tokenizer(prompt)
     for _ in range(output_length):
-        token_logits = model(new_token_sequence[-1])
-        token_pred = Categorical(logits=temperature * token_logits).sample()
-        new_token_sequence += [token_pred]
+        x = tensor([new_token_sequence], device=device_)
+        token_logits = model(x)
+        token_pred = Categorical(logits=temperature * token_logits[0, -1]).sample()
+        new_token_sequence += [token_pred.item()]
 
-    new_text = prompt + " " + " ".join(tokenizer.tokens2text(new_token_sequence[1:]))
+    new_text = "--> " + " ".join(tokenizer.tokens2text(new_token_sequence))
     return new_text.replace(" endofsentence ", ". ")
 
 
@@ -140,12 +148,14 @@ if __name__ == "__main__":
 
     MODEL_NAME = "decoder_next_word_gen"
 
-    SIZE_EMBED = 256 * 2
+    SIZE_EMBED = 256
 
-    N_EPOCHS = 1000
+    N_EPOCHS = 100
     BATCH_SIZE = 64
     SEQUENCE_LENGTH = 40
-    LEARNING_RATE = 0.005
+    LEARNING_RATE = 0.001
+
+    print("-- training model --")
 
     data = FilmReviewSequences(sequence_length=SEQUENCE_LENGTH)
     data_loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
@@ -158,8 +168,10 @@ if __name__ == "__main__":
     from .utils import load_model
 
     MODEL_NAME = "decoder_next_word_gen"
-    PROMPT = "This movie was a total waste of time"
+    PROMPT = "I thought this movie was a"
     TEMPERATURE = 1.0
+
+    print("\n-- generating text --")
 
     tokenizer = IMDBTokenizer()
     model: NextWordPredictionTransformer = load_model(MODEL_NAME)

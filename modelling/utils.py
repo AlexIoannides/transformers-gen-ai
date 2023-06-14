@@ -41,5 +41,6 @@ def load_model(name: str) -> Module:
         for file_path in model_dir.glob("*.pt")
     ]
     best_model = sorted(stored_models, key=lambda e: e[1])[0][0]
+    print(f"loading {best_model}")
     model = load(best_model)
     return model

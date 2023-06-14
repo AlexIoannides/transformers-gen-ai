@@ -73,9 +73,9 @@ def train(
         avg_loss = loss / sequence_length
         train_loss[epoch] = avg_loss.item()
 
-        if epoch % 10 == 0:
+        if epoch % 10 == 0 or epoch == n_epochs:
             timestamp = datetime.now().isoformat(timespec="seconds")
-            print(f"{timestamp} epoch {epoch} loss: {avg_loss.item():.4f}")
+            print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
 
     return train_loss
 
@@ -94,19 +94,21 @@ def generate(
 
     model.to(device_)
     model.eval()
+
+    prompt_tokens = tokenizer(prompt)
     hidden, cell = model.initialise(1, device_)
-
-    prompt_tokens = tensor(tokenizer(prompt), device=device_).view(-1, 1)
     for token in prompt_tokens[:-1]:
-        _, hidden, cell = model(token, hidden, cell)
+        x = tensor([token], device=device_)
+        _, hidden, cell = model(x, hidden, cell)
 
-    new_token_sequence = [prompt_tokens[-1]]
+    new_token_sequence = prompt_tokens
     for _ in range(output_length):
-        token_logits, hidden, cell = model(new_token_sequence[-1], hidden, cell)
+        x = tensor([new_token_sequence[-1]], device=device_)
+        token_logits, hidden, cell = model(x, hidden, cell)
         token_pred = Categorical(logits=temperature * token_logits).sample()
-        new_token_sequence += [token_pred]
+        new_token_sequence += [token_pred.item()]
 
-    new_text = prompt + " " + " ".join(tokenizer.tokens2text(new_token_sequence[1:]))
+    new_text = "--> " + " ".join(tokenizer.tokens2text(new_token_sequence))
     return new_text.replace(" endofsentence ", ". ")
 
 
@@ -120,10 +122,12 @@ if __name__ == "__main__":
     SIZE_EMBED = 256
     SIZE_HIDDEN = 512
 
-    N_EPOCHS = 1000
+    N_EPOCHS = 100
     BATCH_SIZE = 64
     SEQUENCE_LENGTH = 40
     LEARNING_RATE = 0.005
+
+    print("-- training model --")
 
     data = FilmReviewSequences(sequence_length=SEQUENCE_LENGTH)
     data_loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
@@ -136,8 +140,10 @@ if __name__ == "__main__":
     from .utils import load_model
 
     MODEL_NAME = "lstm_next_word_gen"
-    PROMPT = "This movie was a total waste of time"
+    PROMPT = "I thought this movie was a"
     TEMPERATURE = 1.0
+
+    print("\n-- generating text --")
 
     tokenizer = IMDBTokenizer()
     model: NextWordPredictionRNN = load_model(MODEL_NAME)
