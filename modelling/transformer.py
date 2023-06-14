@@ -42,24 +42,26 @@ class NextWordPredictionTransformer(Module):
 
 
 class PositionalEncoding(Module):
+    """Position encoder taken from 'Attention is all you Need'."""
 
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+    def __init__(self, size_embed: int, dropout: float = 0.1, max_seq_len: int = 1000):
         super().__init__()
-        self.dropout = Dropout(p=dropout)
+        self._dropout = Dropout(p=dropout)
 
-        position = arange(max_len).unsqueeze(1)
-        div_term = exp(arange(0, d_model, 2) * (-log(tensor(10000.0)) / d_model))
-        pos_encoding = zeros(max_len, 1, d_model)
-        pos_encoding[:, 0, 0::2] = sin(position * div_term)
-        pos_encoding[:, 0, 1::2] = cos(position * div_term)
-        self.register_buffer('pos_encoding', pos_encoding)
+        position = arange(max_seq_len).unsqueeze(1)
+        div_term = exp(arange(0, size_embed, 2) * (-log(tensor(10000.0)) / size_embed))
+        pos_encoding = zeros(max_seq_len, size_embed)
+        pos_encoding[:, 0::2] = sin(position * div_term)
+        pos_encoding[:, 1::2] = cos(position * div_term)
+        self.register_buffer('pos_encoding', pos_encoding)  # don't train these
 
     def forward(self, x: Tensor) -> Tensor:
         """
         Arguments:
-            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+            x: Tensor, shape ``[batch_size, seq_len, embedding_dim]``
         """
-        x = x + self.pos_encoding[:x.size(0)]
+        seq_len = x.size(1)
+        x = x + self.pos_encoding[:seq_len]
         return self.dropout(x)
 
 

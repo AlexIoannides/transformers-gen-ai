@@ -117,8 +117,8 @@ if __name__ == "__main__":
 
     MODEL_NAME = "lstm_next_word_gen"
 
-    SIZE_EMBED = 256 * 2
-    SIZE_HIDDEN = 512 * 2
+    SIZE_EMBED = 256
+    SIZE_HIDDEN = 512
 
     N_EPOCHS = 1000
     BATCH_SIZE = 64
