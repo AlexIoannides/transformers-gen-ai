@@ -53,29 +53,27 @@ def train(
     train_loss: Dict[int, float] = {}
 
     for epoch in range(1, n_epochs+1):
-        # use random batch of sequences over iterating over all possible batches
-        x_batch, y_batch = next(iter(sequence_data))
-        x_batch = x_batch.to(device, non_blocking=True)
-        y_batch = y_batch.to(device, non_blocking=True)
+        for x_batch, y_batch in sequence_data:
+            x_batch = x_batch.to(device, non_blocking=True)
+            y_batch = y_batch.to(device, non_blocking=True)
 
-        batch_size, sequence_length = x_batch.shape
+            batch_size, sequence_length = x_batch.shape
 
-        loss = tensor(0.0, device=device)
-        optimizer.zero_grad()
+            loss = tensor(0.0, device=device)
+            optimizer.zero_grad()
 
-        hidden, cell = model.initialise(batch_size, device)
-        for n in range(sequence_length):
-            y_pred, hidden, cell = model(x_batch[:, n], hidden, cell)
-            loss += loss_func(y_pred, y_batch[:, n])
-        loss.backward()
-        optimizer.step()
+            hidden, cell = model.initialise(batch_size, device)
+            for n in range(sequence_length):
+                y_pred, hidden, cell = model(x_batch[:, n], hidden, cell)
+                loss += loss_func(y_pred, y_batch[:, n])
+            loss.backward()
+            optimizer.step()
 
         avg_loss = loss / sequence_length
         train_loss[epoch] = avg_loss.item()
 
-        if epoch % 10 == 0 or epoch == n_epochs:
-            timestamp = datetime.now().isoformat(timespec="seconds")
-            print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
 
     return train_loss
 
@@ -84,7 +82,7 @@ def generate(
     model: NextWordPredictionRNN,
     prompt: str,
     tokenizer: _Tokenizer,
-    output_length: int = 40,
+    output_length: int = 60,
     temperature: float = 1.0,
     random_seed: int = 42,
     device_: device = device("cpu"),
@@ -108,13 +106,13 @@ def generate(
         token_pred = Categorical(logits=temperature * token_logits).sample()
         new_token_sequence += [token_pred.item()]
 
-    new_text = "--> " + " ".join(tokenizer.tokens2text(new_token_sequence))
+    new_text = "==> " + " ".join(tokenizer.tokens2text(new_token_sequence))
     return new_text.replace(" endofsentence ", ". ")
 
 
 if __name__ == "__main__":
     # train model
-    from .data import FilmReviewSequences
+    from .data import FilmReviewSequences, pad_seq2seq_data
     from .utils import save_model
 
     MODEL_NAME = "lstm_next_word_gen"
@@ -122,15 +120,21 @@ if __name__ == "__main__":
     SIZE_EMBED = 256
     SIZE_HIDDEN = 512
 
-    N_EPOCHS = 100
-    BATCH_SIZE = 64
-    SEQUENCE_LENGTH = 40
+    N_EPOCHS = 20
+    BATCH_SIZE = 256
+    SEQUENCE_LENGTH = 60
     LEARNING_RATE = 0.005
 
     print("-- training model --")
 
-    data = FilmReviewSequences(sequence_length=SEQUENCE_LENGTH)
-    data_loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+    data = FilmReviewSequences(split="all", sequence_length=SEQUENCE_LENGTH)
+    data_loader = DataLoader(
+        data,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        drop_last=True,
+        collate_fn=pad_seq2seq_data
+    )
     model = NextWordPredictionRNN(data.vocab_size, SIZE_EMBED, SIZE_HIDDEN)
     train_loss = train(model, data_loader, N_EPOCHS, LEARNING_RATE)
     save_model(model, name=MODEL_NAME, loss=train_loss[N_EPOCHS])
@@ -140,7 +144,7 @@ if __name__ == "__main__":
     from .utils import load_model
 
     MODEL_NAME = "lstm_next_word_gen"
-    PROMPT = "I thought this movie was a"
+    PROMPT = "I thought this movie was"
     TEMPERATURE = 1.0
 
     print("\n-- generating text --")

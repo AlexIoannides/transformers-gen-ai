@@ -4,7 +4,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Any, Iterable, List, Tuple
 
 from pandas import concat, DataFrame
 from torch import tensor, Tensor
@@ -67,16 +67,16 @@ class FilmReviewSequences(Dataset):
     def __init__(self, split: str = "train", sequence_length: int = 40):
         train_data, test_data = get_data()
         if split == "train":
-            reviews = " ".join(train_data["review"].tolist())
+            reviews = train_data["review"]
         elif split == "test":
-            reviews = " ".join(test_data["review"].tolist())
+            reviews = test_data["review"]
         elif split == "all":
             all_data = concat([train_data, test_data], ignore_index=True)
-            reviews = " ".join(all_data["review"].tolist())
+            reviews = all_data["review"]
         else:
             raise ValueError("split must be one of 'train' or 'test'.")
         tokenizer = IMDBTokenizer()
-        self._tokenised_reviews = tokenizer(reviews)
+        self._tokenised_reviews = [tokenizer(review) for review in reviews]
         self.vocab_size = tokenizer.vocab_size
         self._chunk_size = sequence_length + 1
 
@@ -84,12 +84,21 @@ class FilmReviewSequences(Dataset):
         return len(self._tokenised_reviews) - self._chunk_size
 
     def __getitem__(self, idx: int) -> Tuple[Tensor, Tensor]:
-        tokenized_chunk = self._tokenised_reviews[idx:(idx + self._chunk_size)]
+        tokenized_chunk = self._tokenised_reviews[idx][:self._chunk_size]
         return (tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
 
     def __iter__(self) -> Iterable[Tuple[Tensor, Tensor]]:
         for n in range(len(self)):
             yield self[n]
+
+
+def pad_seq2seq_data(batch: List[Tuple[int, int]]) -> Tuple[Tensor, Tensor]:
+    """Pad sequence2sequence data tuples."""
+    x = [e[0] for e in batch]
+    y = [e[1] for e in batch]
+    x_padded = pad_sequence(x, batch_first=True)
+    y_padded = pad_sequence(y, batch_first=True)
+    return x_padded, y_padded
 
 
 class BasePreprocessor:
@@ -103,7 +112,7 @@ class BasePreprocessor:
         x = [tensor(self._tokenizer(review)) for review, _ in batch]
         x_padded = pad_sequence(x, batch_first=True)
         x_lens = [e.shape[0] for e in x]
-        return x_padded, y, x_lens
+        return x_padded, y
 
 
 class _Tokenizer(ABC):
@@ -159,7 +168,7 @@ class IMDBTokenizer(_Tokenizer):
 if __name__ == "__main__":
     # data pipeline: generative model training data
     train_data = FilmReviewSequences()
-    train_data_loader = DataLoader(train_data, batch_size=2)
+    train_data_loader = DataLoader(train_data, batch_size=4)
     for batch in train_data_loader:
         print(batch)
         break
