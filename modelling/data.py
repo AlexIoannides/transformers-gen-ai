@@ -4,7 +4,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
 from pathlib import Path
-from typing import Any, Iterable, List, Tuple
+from typing import Iterable, List, Tuple
 
 from pandas import concat, DataFrame
 from torch import tensor, Tensor
@@ -13,6 +13,7 @@ from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
 from torch.utils.data import Dataset, DataLoader
 
+EOS_DELIM = " endofsentence "
 TORCH_DATA_STORAGE_PATH = Path(".data")
 
 
@@ -155,7 +156,7 @@ class IMDBTokenizer(_Tokenizer):
     @staticmethod
     def _tokenize(text: str) -> List[str]:
         """Basic tokenizer that can strip HTML."""
-        text = re.sub(r"[\.\?](\s|$)", " endofsentence ", text)
+        text = re.sub(r"[\.\?](\s|$)", EOS_DELIM, text)
         text = re.sub(r"<[^>]*>", "", text)
         emoticons = re.findall(r"(?::|;|=)(?:-)?(?:\)|\(|D|P)", text.lower())
         text = re.sub(r"[\W]+", " ", text.lower()) + " ".join(emoticons).replace(

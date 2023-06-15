@@ -44,3 +44,10 @@ def load_model(name: str) -> Module:
     print(f"loading {best_model}")
     model = load(best_model)
     return model
+
+
+def capitalise_sentences(text: str, sentence_delimiter: str = ". ") -> str:
+    """Capitalise the first letter of sentences in text passage."""
+    sentences = text.split(sentence_delimiter)
+    sentences = [sentence.capitalize() for sentence in sentences]
+    return sentence_delimiter.join(sentences)

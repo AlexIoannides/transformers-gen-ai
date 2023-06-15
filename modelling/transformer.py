@@ -19,8 +19,8 @@ from torch.nn.init import xavier_uniform_
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 
-from .data import _Tokenizer
-from .utils import get_device
+from .data import _Tokenizer, EOS_DELIM
+from .utils import capitalise_sentences, get_device
 
 
 class NextWordPredictionTransformer(Module):
@@ -129,15 +129,19 @@ def generate(
     model.to(device_)
     model.eval()
 
-    new_token_sequence = tokenizer(prompt)
+    prompt_tokens = tokenizer(prompt)
+    token_sequence = prompt_tokens.copy()
     for _ in range(output_length):
-        x = tensor([new_token_sequence], device=device_)
+        x = tensor([token_sequence], device=device_)
         token_logits = model(x)
         token_pred = Categorical(logits=temperature * token_logits[0, -1]).sample()
-        new_token_sequence += [token_pred.item()]
+        token_sequence += [token_pred.item()]
 
-    new_text = "==> " + " ".join(tokenizer.tokens2text(new_token_sequence))
-    return new_text.replace(" endofsentence ", ". ")
+    new_token_sequence = token_sequence[len(prompt_tokens):]
+    new_text = " " + " ".join(tokenizer.tokens2text(new_token_sequence))
+    new_text = capitalise_sentences(new_text, sentence_delimiter=EOS_DELIM)
+    new_text = new_text.replace(EOS_DELIM, ". ")
+    return "==> " + prompt.upper() + new_text + "..."
 
 
 if __name__ == "__main__":
@@ -149,7 +153,7 @@ if __name__ == "__main__":
 
     SIZE_EMBED = 256
 
-    N_EPOCHS = 5
+    N_EPOCHS = 1
     BATCH_SIZE = 256
     SEQUENCE_LENGTH = 40
     LEARNING_RATE = 0.005

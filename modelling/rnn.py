@@ -8,8 +8,8 @@ from torch.nn import CrossEntropyLoss, Embedding, Linear, Module, LSTM
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 
-from .data import _Tokenizer
-from .utils import get_device
+from .data import _Tokenizer, EOS_DELIM
+from .utils import capitalise_sentences, get_device
 
 
 class NextWordPredictionRNN(Module):
@@ -99,15 +99,18 @@ def generate(
         x = tensor([token], device=device_)
         _, hidden, cell = model(x, hidden, cell)
 
-    new_token_sequence = prompt_tokens
+    token_sequence = prompt_tokens.copy()
     for _ in range(output_length):
-        x = tensor([new_token_sequence[-1]], device=device_)
+        x = tensor([token_sequence[-1]], device=device_)
         token_logits, hidden, cell = model(x, hidden, cell)
         token_pred = Categorical(logits=temperature * token_logits).sample()
-        new_token_sequence += [token_pred.item()]
+        token_sequence += [token_pred.item()]
 
-    new_text = "==> " + " ".join(tokenizer.tokens2text(new_token_sequence))
-    return new_text.replace(" endofsentence ", ". ")
+    new_token_sequence = token_sequence[len(prompt_tokens):]
+    new_text = " " + " ".join(tokenizer.tokens2text(new_token_sequence))
+    new_text = capitalise_sentences(new_text, sentence_delimiter=EOS_DELIM)
+    new_text = new_text.replace(EOS_DELIM, ". ")
+    return "==> " + prompt.upper() + new_text + "..."
 
 
 if __name__ == "__main__":
