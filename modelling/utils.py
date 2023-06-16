@@ -31,18 +31,27 @@ def save_model(model: Module, name: str, loss: float) -> None:
     save(model, model_dir / filename)
 
 
-def load_model(name: str) -> Module:
+def load_model(name: str, latest: bool = False) -> Module:
     """Load model with best loss."""
     if not TORCH_MODEL_STORAGE_PATH.exists():
         TORCH_MODEL_STORAGE_PATH.mkdir()
     model_dir = TORCH_MODEL_STORAGE_PATH / name
-    stored_models = [
-        (file_path, str(file_path).split("loss=")[1])
-        for file_path in model_dir.glob("*.pt")
-    ]
-    best_model = sorted(stored_models, key=lambda e: e[1])[0][0]
-    print(f"loading {best_model}")
-    model = load(best_model)
+
+    if not latest:
+        stored_models = [
+            (file_path, str(file_path).split("loss=")[1])
+            for file_path in model_dir.glob("*.pt")
+        ]
+        model = sorted(stored_models, key=lambda e: e[1])[0][0]
+    else:
+        stored_models = [
+            (file_path, str(file_path).split("trained@")[1][:19])
+            for file_path in model_dir.glob("*.pt")
+        ]
+        model = sorted(stored_models, key=lambda e: datetime.fromisoformat(e[1]))[-1][0]
+
+    print(f"loading {model}")
+    model = load(model)
     return model
 
 
