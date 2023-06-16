@@ -1,10 +1,22 @@
 """Language modelling using multi-head attention transformers."""
 from __future__ import annotations
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Tuple
 
 from torch import (
-    arange, cos, device, exp, log, manual_seed, tensor, sin, sqrt, Tensor, zeros
+    arange,
+    cos,
+    device,
+    exp,
+    log,
+    manual_seed,
+    ones,
+    tensor,
+    sin,
+    sqrt,
+    Tensor,
+    tril,
+    zeros
 )
 from torch.distributions import Categorical
 from torch.nn import (
@@ -16,10 +28,12 @@ from torch.nn import (
     TransformerDecoderLayer
 )
 from torch.nn.init import xavier_uniform_
+from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from torch.optim import Adam
+from tqdm import tqdm
 
-from .data import _Tokenizer, EOS_DELIM
+from .data import _Tokenizer, EOS_DELIM, PAD_TOKEN_IDX
 from .utils import capitalise_sentences, get_device
 
 
@@ -30,6 +44,7 @@ class NextWordPredictionTransformer(Module):
         super().__init__()
         self._size_vocab = size_vocab
         self._size_embed = size_embed
+        self._n_heads = n_heads
         self._position_encoder = PositionalEncoding(size_embed)
         self._embedding = Embedding(size_vocab, size_embed)
         self._decoder = TransformerDecoderLayer(size_embed, n_heads, batch_first=True)
@@ -37,17 +52,33 @@ class NextWordPredictionTransformer(Module):
         self._init_weights()
 
     def forward(self, x: Tensor) -> Tensor:
+        x_causal_mask, x_padding_mask = self._make_mask(x)
         out = self._embedding(x) * sqrt(tensor(self._size_embed))
         out = self._position_encoder(out)
-        out = self._decoder(out, out, tgt_is_causal=True, memory_is_causal=True)
+        out = self._decoder(
+            out,
+            out,
+            tgt_mask=x_causal_mask,
+            tgt_key_padding_mask=x_padding_mask,
+            memory_mask=x_causal_mask,
+            memory_key_padding_mask=x_padding_mask
+        )
         out = self._linear(out)
         return out
 
     def _init_weights(self) -> NextWordPredictionTransformer:
+        """Parameter initialisaion from Attention is all you Need."""
         for p in self.parameters():
             if p.dim() > 1:
                 xavier_uniform_(p)
         return self
+
+    def _make_mask(self, x: Tensor) -> Tuple[Tensor, Tensor]:
+        """Make causal and padding masks."""
+        causal_mask = ones(x.size(0) * self._n_heads, x.size(1), x.size(1))
+        causal_mask = (tril(causal_mask) == 0)
+        padding_mask = (x == PAD_TOKEN_IDX)
+        return causal_mask.to(x.device), padding_mask.to(x.device)
 
 
 class PositionalEncoding(Module):
@@ -88,13 +119,13 @@ def train(
     model.to(device)
     model.train()
 
-    optimizer = Adam(model.parameters(), lr=learning_rate)
-    loss_func = CrossEntropyLoss()
+    optimizer = Adam(model.parameters(), lr=learning_rate, betas=(0.9, 0.98), eps=1e-9)
+    loss_func = CrossEntropyLoss(ignore_index=PAD_TOKEN_IDX)
     train_loss: Dict[int, float] = {}
 
     for epoch in range(1, n_epochs+1):
         # use random batch of sequences over iterating over all possible batches
-        for x_batch, y_batch in sequence_data:
+        for x_batch, y_batch in (pbar := tqdm(sequence_data)):
             x_batch = x_batch.to(device, non_blocking=True)
             y_batch = y_batch.to(device, non_blocking=True)
 
@@ -103,10 +134,13 @@ def train(
 
             optimizer.zero_grad()
             loss.backward()
+            clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
 
             avg_loss = loss
             train_loss[epoch] = avg_loss.item()
+
+            pbar.set_description(f"epoch {epoch} current loss = {avg_loss:.4f}")
 
         timestamp = datetime.now().isoformat(timespec="seconds")
         print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
@@ -153,10 +187,10 @@ if __name__ == "__main__":
 
     SIZE_EMBED = 256
 
-    N_EPOCHS = 1
+    N_EPOCHS = 5
     BATCH_SIZE = 256
     SEQUENCE_LENGTH = 40
-    LEARNING_RATE = 0.005
+    LEARNING_RATE = 0.001
 
     print("-- training model --")
 

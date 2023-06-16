@@ -7,8 +7,9 @@ from torch.distributions import Categorical
 from torch.nn import CrossEntropyLoss, Embedding, Linear, Module, LSTM
 from torch.utils.data import DataLoader
 from torch.optim import Adam
+from tqdm import tqdm
 
-from .data import _Tokenizer, EOS_DELIM
+from .data import _Tokenizer, EOS_DELIM, PAD_TOKEN_IDX
 from .utils import capitalise_sentences, get_device
 
 
@@ -49,11 +50,11 @@ def train(
     model.train()
 
     optimizer = Adam(model.parameters(), lr=learning_rate)
-    loss_func = CrossEntropyLoss()
+    loss_func = CrossEntropyLoss(ignore_index=PAD_TOKEN_IDX)
     train_loss: Dict[int, float] = {}
 
     for epoch in range(1, n_epochs+1):
-        for x_batch, y_batch in sequence_data:
+        for x_batch, y_batch in (pbar := tqdm(sequence_data)):
             x_batch = x_batch.to(device, non_blocking=True)
             y_batch = y_batch.to(device, non_blocking=True)
 
@@ -72,8 +73,10 @@ def train(
         avg_loss = loss / sequence_length
         train_loss[epoch] = avg_loss.item()
 
-        timestamp = datetime.now().isoformat(timespec="seconds")
-        print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
+        pbar.set_description(f"epoch {epoch} current loss = {avg_loss:.4f}")
+
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
 
     return train_loss
 

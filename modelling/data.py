@@ -14,6 +14,8 @@ from torchtext.vocab import vocab
 from torch.utils.data import Dataset, DataLoader
 
 EOS_DELIM = " endofsentence "
+PAD_TOKEN_IDX = 0
+UNKOWN_TOKEN_IDX = 1
 TORCH_DATA_STORAGE_PATH = Path(".data")
 
 
@@ -112,7 +114,6 @@ class BasePreprocessor:
         y = [tensor(e) for _, e in batch]
         x = [tensor(self._tokenizer(review)) for review, _ in batch]
         x_padded = pad_sequence(x, batch_first=True)
-        x_lens = [e.shape[0] for e in x]
         return x_padded, y
 
 
@@ -141,8 +142,8 @@ class IMDBTokenizer(_Tokenizer):
         token_counter = Counter(self._tokenize(reviews))
         token_freqs = sorted(token_counter.items(), key=lambda e: e[1], reverse=True)
         _vocab = vocab(OrderedDict(token_freqs))
-        _vocab.insert_token("<pad>", 0)
-        _vocab.insert_token("<unk>", 1)
+        _vocab.insert_token("<pad>", PAD_TOKEN_IDX)
+        _vocab.insert_token("<unk>", UNKOWN_TOKEN_IDX)
         _vocab.set_default_index(1)
         self.vocab = _vocab
         self.vocab_size = len(self.vocab)
