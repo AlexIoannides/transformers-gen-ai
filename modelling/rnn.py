@@ -128,12 +128,13 @@ if __name__ == "__main__":
 
     N_EPOCHS = 20
     BATCH_SIZE = 256
-    SEQUENCE_LENGTH = 60
+    SEQ_LEN = 40
+    MIN_WORD_FREQ = 2
     LEARNING_RATE = 0.005
 
     print("-- training model --")
 
-    data = FilmReviewSequences(split="all", sequence_length=SEQUENCE_LENGTH)
+    data = FilmReviewSequences(split="all", seq_len=SEQ_LEN, min_freq=MIN_WORD_FREQ)
     data_loader = DataLoader(
         data,
         batch_size=BATCH_SIZE,

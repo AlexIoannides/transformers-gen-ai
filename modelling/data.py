@@ -67,7 +67,9 @@ class FilmReviewSentiment(Dataset):
 class FilmReviewSequences(Dataset):
     """IMDB film reviews training generative models."""
 
-    def __init__(self, split: str = "train", sequence_length: int = 40):
+    def __init__(
+            self, split: str = "train", seq_len: int = 40, min_freq: int = 1
+    ):
         train_data, test_data = get_data()
         if split == "train":
             reviews = train_data["review"]
@@ -78,10 +80,10 @@ class FilmReviewSequences(Dataset):
             reviews = all_data["review"]
         else:
             raise ValueError("split must be one of 'train' or 'test'.")
-        tokenizer = IMDBTokenizer()
+        tokenizer = IMDBTokenizer(min_freq)
         self._tokenised_reviews = [tokenizer(review) for review in reviews]
         self.vocab_size = tokenizer.vocab_size
-        self._chunk_size = sequence_length + 1
+        self._chunk_size = seq_len + 1
 
     def __len__(self) -> int:
         return len(self._tokenised_reviews) - self._chunk_size
@@ -135,13 +137,13 @@ class _Tokenizer(ABC):
 class IMDBTokenizer(_Tokenizer):
     """Word to integer tokenisation for use with any dataset or model."""
 
-    def __init__(self):
+    def __init__(self, min_freq: int = 2):
         train_and_test = concat(get_data(), ignore_index=True)
         reviews = " ".join(train_and_test["review"].tolist())
 
         token_counter = Counter(self._tokenize(reviews))
         token_freqs = sorted(token_counter.items(), key=lambda e: e[1], reverse=True)
-        _vocab = vocab(OrderedDict(token_freqs))
+        _vocab = vocab(OrderedDict(token_freqs), min_freq=min_freq)
         _vocab.insert_token("<pad>", PAD_TOKEN_IDX)
         _vocab.insert_token("<unk>", UNKOWN_TOKEN_IDX)
         _vocab.set_default_index(1)
