@@ -147,9 +147,7 @@ def train(
     train_loss: Dict[int, float] = {}
 
     print(f"number of warmup steps: {n_warmup_steps} / {n_steps}")
-
     for epoch in range(1, n_epochs+1):
-        # use random batch of sequences over iterating over all possible batches
         for x_batch, y_batch in (pbar := tqdm(sequence_data)):
             x_batch = x_batch.to(device, non_blocking=True)
             y_batch = y_batch.to(device, non_blocking=True)
@@ -165,16 +163,27 @@ def train(
             learning_rate_scheduler.step()
 
             avg_loss = loss
-            train_loss[epoch] = avg_loss.item()
             current_lr = learning_rate_scheduler.get_last_lr()[0]
-
             pbar.set_description(
                 f"epoch {epoch} current loss = {avg_loss:.4f} (LR = {current_lr:.8f})"
             )
 
+        if epoch == 1 or avg_loss.item() < min(train_loss.keys()):
+            best_checkpoint = {
+                "state_dict": model.state_dict().copy(),
+                "loss": avg_loss.item(),
+                "epoch": epoch
+            }
+
+        train_loss[epoch] = avg_loss.item()
         timestamp = datetime.now().isoformat(timespec="seconds")
         print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
 
+    print("best model:")
+    print(f"|-- epoch: {best_checkpoint['epoch']}")
+    print(f"|-- loss: {best_checkpoint['loss']:.4f}")
+
+    model.load_state_dict(best_checkpoint["state_dict"])
     return train_loss
 
 
@@ -222,7 +231,7 @@ if __name__ == "__main__":
     SEQ_LEN = 40
     MIN_WORD_FREQ = 2
     MAXIMUM_LEARNING_RATE = 0.001
-    WARMUP_EPOCHS = 0.5
+    WARMUP_EPOCHS = 2
     GRADIENT_CLIP = 5
 
     print("-- training model --")

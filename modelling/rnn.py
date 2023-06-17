@@ -71,13 +71,24 @@ def train(
             optimizer.step()
 
         avg_loss = loss / sequence_length
-        train_loss[epoch] = avg_loss.item()
-
         pbar.set_description(f"epoch {epoch} current loss = {avg_loss:.4f}")
 
-    timestamp = datetime.now().isoformat(timespec="seconds")
-    print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
+        if epoch == 1 or avg_loss.item() < min(train_loss.keys()):
+            best_checkpoint = {
+                "state_dict": model.state_dict().copy(),
+                "loss": avg_loss.item(),
+                "epoch": epoch
+            }
 
+        train_loss[epoch] = avg_loss.item()
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
+
+    print("- best model:")
+    print(f"|-- epoch: {best_checkpoint['epoch']}")
+    print(f"|-- loss: {best_checkpoint['loss']:.4f}")
+
+    model.load_state_dict(best_checkpoint["state_dict"])
     return train_loss
 
 
