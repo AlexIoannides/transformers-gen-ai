@@ -151,7 +151,6 @@ def train(
         for x_batch, y_batch in (pbar := tqdm(sequence_data)):
             x_batch = x_batch.to(device, non_blocking=True)
             y_batch = y_batch.to(device, non_blocking=True)
-
             y_pred = model(x_batch)
             loss = loss_func(y_pred.permute(0, 2, 1), y_batch)
 
@@ -168,7 +167,7 @@ def train(
                 f"epoch {epoch} current loss = {avg_loss:.4f} (LR = {current_lr:.8f})"
             )
 
-        if epoch == 1 or avg_loss.item() < min(train_loss.keys()):
+        if epoch == 1 or avg_loss.item() < min(train_loss.values()):
             best_checkpoint = {
                 "state_dict": model.state_dict().copy(),
                 "loss": avg_loss.item(),
@@ -182,8 +181,8 @@ def train(
     print("best model:")
     print(f"|-- epoch: {best_checkpoint['epoch']}")
     print(f"|-- loss: {best_checkpoint['loss']:.4f}")
-
     model.load_state_dict(best_checkpoint["state_dict"])
+
     return train_loss
 
 
@@ -245,7 +244,7 @@ if __name__ == "__main__":
         collate_fn=pad_seq2seq_data
     )
     model = NextWordPredictionTransformer(data.vocab_size, SIZE_EMBED)
-    train_loss = train(
+    train_losses = train(
         model,
         data_loader,
         N_EPOCHS,
@@ -253,7 +252,7 @@ if __name__ == "__main__":
         WARMUP_EPOCHS,
         GRADIENT_CLIP
     )
-    save_model(model, name=MODEL_NAME, loss=train_loss[N_EPOCHS])
+    save_model(model, name=MODEL_NAME, loss=min(train_losses.values()))
 
     # generate text
     from .data import IMDBTokenizer
