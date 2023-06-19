@@ -73,7 +73,7 @@ def train(
         avg_loss = loss / sequence_length
         pbar.set_description(f"epoch {epoch} current loss = {avg_loss:.4f}")
 
-        if epoch == 1 or avg_loss.item() < min(train_loss.keys()):
+        if epoch == 1 or avg_loss.item() < min(train_loss.values()):
             best_checkpoint = {
                 "state_dict": model.state_dict().copy(),
                 "loss": avg_loss.item(),
@@ -154,8 +154,8 @@ if __name__ == "__main__":
         collate_fn=pad_seq2seq_data
     )
     model = NextWordPredictionRNN(data.vocab_size, SIZE_EMBED, SIZE_HIDDEN)
-    train_loss = train(model, data_loader, N_EPOCHS, LEARNING_RATE)
-    save_model(model, name=MODEL_NAME, loss=train_loss[N_EPOCHS])
+    train_losses = train(model, data_loader, N_EPOCHS, LEARNING_RATE)
+    save_model(model, name=MODEL_NAME, loss=min(train_losses.values()))
 
     # generate text
     from .data import IMDBTokenizer
