@@ -3,3 +3,4 @@
 .models
 .pytype
 __pycache__
+.vscode
