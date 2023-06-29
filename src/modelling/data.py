@@ -11,7 +11,7 @@ from torch import tensor, Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
 EOS_DELIM = " endofsentence "
 PAD_TOKEN_IDX = 0
@@ -167,20 +167,3 @@ class IMDBTokenizer(_Tokenizer):
         )
         tokenized = text.split()
         return tokenized
-
-
-if __name__ == "__main__":
-    # data pipeline: generative model training data
-    train_data = FilmReviewSequences()
-    train_data_loader = DataLoader(train_data, batch_size=4)
-    for batch in train_data_loader:
-        print(batch)
-        break
-
-    # data pipeline: sentiment classification data pipeline
-    train_data = FilmReviewSentiment("train")
-    preproc = BasePreprocessor()
-    train_data_loader = DataLoader(train_data, batch_size=4, collate_fn=preproc)
-    for batch in train_data_loader:
-        print(batch)
-        break
