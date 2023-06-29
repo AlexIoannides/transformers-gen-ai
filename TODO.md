@@ -1,3 +1,3 @@
 # TODO
 
-- compose notebook demonstrating transformer output at each step and relation to task.
+- develop notebooks that walk readers through how to use the code to train RNNs and transformers.

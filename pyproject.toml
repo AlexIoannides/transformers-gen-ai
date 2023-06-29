@@ -1,0 +1,35 @@
+[project]
+name = "modelling"
+version = "0.0.1dev0"
+authors = [
+  { name="Alex Ioannides", email="alex@bodyworkml.com" },
+]
+maintainers = [
+  { name="Alex Ioannides", email="alex@bodyworkml.com" },
+]
+description = "Transformers and language modelling from a standing start."
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pandas==2.0.1",
+    "torch==2.0.1",
+    "torchtext==0.15.2",
+    "tqdm==4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black==23.3.0",
+    "flake8==6.0.0",
+    "isort==5.12.0",
+    "nbqa==1.7.0",
+    "pytype==2023.4.27",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/AlexIoannides/transformers"
+"Bug Tracker" = "https://github.com/AlexIoannides/transformers/issues"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
