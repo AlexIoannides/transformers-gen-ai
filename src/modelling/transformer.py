@@ -175,10 +175,8 @@ def train(
             }
 
         train_loss[epoch] = avg_loss.item()
-        timestamp = datetime.now().isoformat(timespec="seconds")
-        print(f"{timestamp} epoch {epoch} loss: {train_loss[epoch]:.4f}")
 
-    print("best model:")
+    print("\nbest model:")
     print(f"|-- epoch: {best_checkpoint['epoch']}")
     print(f"|-- loss: {best_checkpoint['loss']:.4f}")
     model.load_state_dict(best_checkpoint["state_dict"])
