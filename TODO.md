@@ -1,3 +1,7 @@
 # TODO
 
-- develop notebooks that walk readers through how to use the code to train RNNs and transformers.
+- populate README
+- add LICENSE
+- improve the comments and docstrings in source code
+- make persistence work via `state_dict`
+- add tests
