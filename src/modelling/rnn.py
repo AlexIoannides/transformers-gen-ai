@@ -1,5 +1,4 @@
 """Language modelling using RNNs."""
-from datetime import datetime
 from typing import Dict, Tuple
 
 from torch import device, manual_seed, tensor, Tensor, zeros

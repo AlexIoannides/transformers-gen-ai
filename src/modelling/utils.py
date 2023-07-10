@@ -1,7 +1,10 @@
 """Helper functions."""
 from datetime import datetime
 from pathlib import Path
+from typing import Dict
 
+from pandas import DataFrame
+from seaborn import lineplot
 from torch import device, load, save
 from torch.backends import mps
 from torch.nn import Module
@@ -60,3 +63,10 @@ def capitalise_sentences(text: str, sentence_delimiter: str = ". ") -> str:
     sentences = text.split(sentence_delimiter)
     sentences = [sentence.capitalize() for sentence in sentences]
     return sentence_delimiter.join(sentences)
+
+
+def plot_train_losses(train_losses: Dict[int, float]) -> None:
+    """Plot training losses per-epoch."""
+    rows = [(epoch, loss) for epoch, loss in train_losses.items()]
+    df = DataFrame(rows, columns=["epoch", "loss"])
+    lineplot(df, x="epoch", y="loss")
