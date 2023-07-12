@@ -1,6 +1,6 @@
 [project]
 name = "modelling"
-version = "0.2.0
+version = "0.2.0"
 authors = [
   { name="Alex Ioannides", email="alex@bodyworkml.com" },
 ]
