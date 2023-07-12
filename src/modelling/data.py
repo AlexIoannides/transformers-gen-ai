@@ -50,7 +50,7 @@ class FilmReviewSequences(Dataset):
         self,
         tokenized_reviews: List[List[int]],
         seq_len: int = 40,
-        random_chunks: bool = True
+        random_chunks: bool = True,
     ):
         self._tokenized_reviews = tokenized_reviews
         self._chunk_size = seq_len + 1
@@ -86,10 +86,10 @@ class SequenceDatasets(NamedTuple):
 
 
 def make_sequence_datasets(
-        train_test_split: float = 0.2,
-        train_val_split: float = 0.05,
-        seq_len: int = 40,
-        min_word_freq: int = 2
+    train_test_split: float = 0.2,
+    train_val_split: float = 0.05,
+    seq_len: int = 40,
+    min_word_freq: int = 2,
 ) -> SequenceDatasets:
     """Make train, validation and test datasets."""
     reviews = get_data()["review"].tolist()
@@ -114,19 +114,6 @@ def pad_seq2seq_data(batch: List[Tuple[int, int]]) -> Tuple[Tensor, Tensor]:
     x_padded = pad_sequence(x, batch_first=True)
     y_padded = pad_sequence(y, batch_first=True)
     return x_padded, y_padded
-
-
-# class BasePreprocessor:
-#     """Basic pre-processor for use as a collate_fn for DataLoaders."""
-
-#     def __init__(self):
-#         self._tokenizer = IMDBTokenizer()
-
-#     def __call__(self, batch: List[Tuple[str, int]]) -> Tuple[Tensor, Tensor, Tensor]:
-#         y = [tensor(e) for _, e in batch]
-#         x = [tensor(self._tokenizer(review)) for review, _ in batch]
-#         x_padded = pad_sequence(x, batch_first=True)
-#         return x_padded, y
 
 
 class _Tokenizer(ABC):

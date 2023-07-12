@@ -66,7 +66,7 @@ def capitalise_sentences(text: str, sentence_delimiter: str = ". ") -> str:
 
 
 def plot_train_losses(
-        train_losses: Dict[int, float], val_losses: Dict[int, float]
+    train_losses: Dict[int, float], val_losses: Dict[int, float]
 ) -> None:
     """Plot training and validation losses per-epoch."""
     train_rows = [(epoch, loss, "train") for epoch, loss in train_losses.items()]
@@ -82,7 +82,7 @@ def _early_stop(train_loss: Dict[int, float], epoch_window: int = 3) -> bool:
     else:
         losses = list(train_loss.values())
         current_loss = losses[-1]
-        avg_window_loss = sum(losses[-(epoch_window+1):-1]) / epoch_window
+        avg_window_loss = sum(losses[-(epoch_window + 1) : -1]) / epoch_window
         if current_loss >= avg_window_loss:
             return True
         else:

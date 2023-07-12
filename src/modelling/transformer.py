@@ -18,7 +18,7 @@ from torch import (
     sqrt,
     Tensor,
     tril,
-    zeros
+    zeros,
 )
 from torch.distributions import Categorical
 from torch.nn import (
@@ -27,7 +27,7 @@ from torch.nn import (
     Embedding,
     Linear,
     Module,
-    TransformerDecoderLayer
+    TransformerDecoderLayer,
 )
 from torch.nn.init import xavier_uniform_
 from torch.nn.utils import clip_grad_norm_
@@ -51,7 +51,7 @@ class NextWordPredictionTransformer(Module):
         self._position_encoder = PositionalEncoding(size_embed)
         self._embedding = Embedding(size_vocab, size_embed)
         self._decoder = TransformerDecoderLayer(
-            size_embed, n_heads, dim_feedforward=2*size_embed, batch_first=True
+            size_embed, n_heads, dim_feedforward=2 * size_embed, batch_first=True
         )
         self._linear = Linear(size_embed, size_vocab)
         self._init_weights()
@@ -66,7 +66,7 @@ class NextWordPredictionTransformer(Module):
             tgt_mask=x_causal_mask,
             tgt_key_padding_mask=x_padding_mask,
             memory_mask=x_causal_mask,
-            memory_key_padding_mask=x_padding_mask
+            memory_key_padding_mask=x_padding_mask,
         )
         out = self._linear(out)
         return out
@@ -81,8 +81,8 @@ class NextWordPredictionTransformer(Module):
     def _make_mask(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         """Make causal and padding masks."""
         causal_mask = ones(x.size(0) * self._n_heads, x.size(1), x.size(1))
-        causal_mask = (tril(causal_mask) == 0)
-        padding_mask = (x == PAD_TOKEN_IDX)
+        causal_mask = tril(causal_mask) == 0
+        padding_mask = x == PAD_TOKEN_IDX
         return causal_mask.to(x.device), padding_mask.to(x.device)
 
 
@@ -98,7 +98,7 @@ class PositionalEncoding(Module):
         pos_encoding = zeros(max_seq_len, size_embed)
         pos_encoding[:, 0::2] = sin(position * div_term)
         pos_encoding[:, 1::2] = cos(position * div_term)
-        self.register_buffer('_pos_encoding', pos_encoding)  # don't train these
+        self.register_buffer("_pos_encoding", pos_encoding)  # don't train these
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -125,7 +125,7 @@ def _train_step(
     loss_fn: Callable[[Tensor, Tensor], Tensor],
     optimizer: Optimizer,
     lr_scheduler: LRScheduler,
-    clip_grads: Optional[float] = None
+    clip_grads: Optional[float] = None,
 ) -> float:
     """One iteration of the training loop (for one batch)."""
     model.train()
@@ -146,7 +146,7 @@ def _val_step(
     x_batch: Tensor,
     y_batch: Tensor,
     model: Module,
-    loss_fn: Callable[[Tensor, Tensor], Tensor]
+    loss_fn: Callable[[Tensor, Tensor], Tensor],
 ) -> float:
     """One iteration of the validation loop (for one batch)."""
     model.eval()
@@ -183,7 +183,7 @@ def train(
     val_losses: Dict[int, float] = {}
 
     print(f"number of warmup steps: {n_warmup_steps} / {n_steps}")
-    for epoch in range(1, n_epochs+1):
+    for epoch in range(1, n_epochs + 1):
         loss_train = 0.0
         for i, (x_batch, y_batch) in enumerate((pbar := tqdm(train_data)), start=1):
             x = x_batch.to(device, non_blocking=True)
@@ -207,7 +207,7 @@ def train(
             best_checkpoint = {
                 "state_dict": model.state_dict().copy(),
                 "loss": val_losses[epoch],
-                "epoch": epoch
+                "epoch": epoch,
             }
 
         if _early_stop(val_losses):
@@ -244,7 +244,7 @@ def generate(
         token_pred = Categorical(logits=temperature * token_logits[0, -1]).sample()
         token_sequence += [token_pred.item()]
 
-    new_token_sequence = token_sequence[len(prompt_tokens):]
+    new_token_sequence = token_sequence[len(prompt_tokens) :]
     new_text = " " + " ".join(tokenizer.tokens2text(new_token_sequence))
     new_text = capitalise_sentences(new_text, sentence_delimiter=EOS_DELIM)
     new_text = new_text.replace(EOS_DELIM, ". ")

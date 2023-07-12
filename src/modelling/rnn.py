@@ -35,11 +35,11 @@ class NextWordPredictionRNN(Module):
 
 
 def _train_step(
-        x_batch: Tensor,
-        y_batch: Tensor,
-        model: Module,
-        loss_fn: Callable[[Tensor, Tensor], Tensor],
-        optimizer: Optimizer
+    x_batch: Tensor,
+    y_batch: Tensor,
+    model: Module,
+    loss_fn: Callable[[Tensor, Tensor], Tensor],
+    optimizer: Optimizer,
 ) -> float:
     """One iteration of the training loop (for one batch)."""
     model.train()
@@ -60,10 +60,10 @@ def _train_step(
 
 
 def _val_step(
-        x_batch: Tensor,
-        y_batch: Tensor,
-        model: Module,
-        loss_fn: Callable[[Tensor, Tensor], Tensor]
+    x_batch: Tensor,
+    y_batch: Tensor,
+    model: Module,
+    loss_fn: Callable[[Tensor, Tensor], Tensor],
 ) -> float:
     """One iteration of the validation loop (for one batch)."""
     model.eval()
@@ -99,7 +99,7 @@ def train(
     train_losses: Dict[int, float] = {}
     val_losses: Dict[int, float] = {}
 
-    for epoch in range(1, n_epochs+1):
+    for epoch in range(1, n_epochs + 1):
         loss_train = 0.0
         for i, (x_batch, y_batch) in enumerate((pbar := tqdm(train_data)), start=1):
             x = x_batch.to(device, non_blocking=True)
@@ -120,7 +120,7 @@ def train(
             best_checkpoint = {
                 "state_dict": model.state_dict().copy(),
                 "loss": val_losses[epoch],
-                "epoch": epoch
+                "epoch": epoch,
             }
 
         if _early_stop(val_losses):
@@ -162,7 +162,7 @@ def generate(
         token_pred = Categorical(logits=temperature * token_logits).sample()
         token_sequence += [token_pred.item()]
 
-    new_token_sequence = token_sequence[len(prompt_tokens):]
+    new_token_sequence = token_sequence[len(prompt_tokens) :]
     new_text = " " + " ".join(tokenizer.tokens2text(new_token_sequence))
     new_text = capitalise_sentences(new_text, sentence_delimiter=EOS_DELIM)
     new_text = new_text.replace(EOS_DELIM, ". ")
