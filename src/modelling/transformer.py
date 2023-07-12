@@ -5,11 +5,30 @@ import math
 from functools import partial
 from typing import Callable, Dict, Optional, Tuple
 
-from torch import (Tensor, arange, cos, device, exp, log, manual_seed, ones,
-                   sin, sqrt, tensor, tril, zeros)
+from torch import (
+    Tensor,
+    arange,
+    cos,
+    device,
+    exp,
+    log,
+    manual_seed,
+    ones,
+    sin,
+    sqrt,
+    tensor,
+    tril,
+    zeros,
+)
 from torch.distributions import Categorical
-from torch.nn import (CrossEntropyLoss, Dropout, Embedding, Linear, Module,
-                      TransformerDecoderLayer)
+from torch.nn import (
+    CrossEntropyLoss,
+    Dropout,
+    Embedding,
+    Linear,
+    Module,
+    TransformerDecoderLayer,
+)
 from torch.nn.init import xavier_uniform_
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import Adam, Optimizer
