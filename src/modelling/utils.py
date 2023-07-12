@@ -65,8 +65,25 @@ def capitalise_sentences(text: str, sentence_delimiter: str = ". ") -> str:
     return sentence_delimiter.join(sentences)
 
 
-def plot_train_losses(train_losses: Dict[int, float]) -> None:
-    """Plot training losses per-epoch."""
-    rows = [(epoch, loss) for epoch, loss in train_losses.items()]
-    df = DataFrame(rows, columns=["epoch", "loss"])
-    lineplot(df, x="epoch", y="loss")
+def plot_train_losses(
+        train_losses: Dict[int, float], val_losses: Dict[int, float]
+) -> None:
+    """Plot training and validation losses per-epoch."""
+    train_rows = [(epoch, loss, "train") for epoch, loss in train_losses.items()]
+    val_rows = [(epoch, loss, "val") for epoch, loss in val_losses.items()]
+    df = DataFrame(train_rows + val_rows, columns=["epoch", "loss", "dataset"])
+    lineplot(df, x="epoch", y="loss", hue="dataset")
+
+
+def _early_stop(train_loss: Dict[int, float], epoch_window: int = 3) -> bool:
+    """Flag when training no longer improves loss."""
+    if len(train_loss) < epoch_window + 1:
+        return False
+    else:
+        losses = list(train_loss.values())
+        current_loss = losses[-1]
+        avg_window_loss = sum(losses[-(epoch_window+1):-1]) / epoch_window
+        if current_loss >= avg_window_loss:
+            return True
+        else:
+            return False
