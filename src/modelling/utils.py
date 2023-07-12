@@ -17,7 +17,7 @@ def get_device() -> device:
     if mps.is_available():
         return device("mps")
     else:
-        device("cpu")
+        return device("cpu")
 
 
 def save_model(model: Module, name: str, loss: float) -> None:
