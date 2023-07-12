@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from functools import partial
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable
 
 from torch import (
     Tensor,
@@ -78,7 +78,7 @@ class NextWordPredictionTransformer(Module):
                 xavier_uniform_(p)
         return self
 
-    def _make_mask(self, x: Tensor) -> Tuple[Tensor, Tensor]:
+    def _make_mask(self, x: Tensor) -> tuple[Tensor, Tensor]:
         """Make causal and padding masks."""
         causal_mask = ones(x.size(0) * self._n_heads, x.size(1), x.size(1))
         causal_mask = tril(causal_mask) == 0
@@ -125,7 +125,7 @@ def _train_step(
     loss_fn: Callable[[Tensor, Tensor], Tensor],
     optimizer: Optimizer,
     lr_scheduler: LRScheduler,
-    clip_grads: Optional[float] = None,
+    clip_grads: float | None = None,
 ) -> float:
     """One iteration of the training loop (for one batch)."""
     model.train()
@@ -162,9 +162,9 @@ def train(
     n_epochs: int,
     learning_rate: float = 0.001,
     warmup_epochs: float = 0.5,
-    clip_grads: Optional[float] = None,
+    clip_grads: float | None = None,
     random_seed: int = 42,
-) -> Tuple[Dict[int, float], Dict[int, float]]:
+) -> tuple[dict[int, float], dict[int, float]]:
     """Training loop for transformer decoder."""
     manual_seed(random_seed)
     device = get_device()
@@ -179,8 +179,8 @@ def train(
     lrs_fn = partial(warmup_schedule, warmup_steps=n_warmup_steps, max_steps=n_steps)
     lrs = LambdaLR(optimizer, lrs_fn)
 
-    train_losses: Dict[int, float] = {}
-    val_losses: Dict[int, float] = {}
+    train_losses: dict[int, float] = {}
+    val_losses: dict[int, float] = {}
 
     print(f"number of warmup steps: {n_warmup_steps} / {n_steps}")
     for epoch in range(1, n_epochs + 1):

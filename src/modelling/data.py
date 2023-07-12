@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
 from pathlib import Path
 from random import randint
-from typing import Iterable, List, NamedTuple, Tuple
+from typing import Iterable, NamedTuple
 
 from pandas import DataFrame, concat
 from torch import Tensor, tensor
@@ -48,7 +48,7 @@ class FilmReviewSequences(Dataset):
 
     def __init__(
         self,
-        tokenized_reviews: List[List[int]],
+        tokenized_reviews: list[list[int]],
         seq_len: int = 40,
         random_chunks: bool = True,
     ):
@@ -59,7 +59,7 @@ class FilmReviewSequences(Dataset):
     def __len__(self) -> int:
         return len(self._tokenized_reviews) - self._chunk_size
 
-    def __getitem__(self, idx: int) -> Tuple[Tensor, Tensor]:
+    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
         review = self._tokenized_reviews[idx]
 
         if self._rnd_chunks:
@@ -71,7 +71,7 @@ class FilmReviewSequences(Dataset):
         tokenized_chunk = review[chunk_start:chunk_end]
         return (tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
 
-    def __iter__(self) -> Iterable[Tuple[Tensor, Tensor]]:
+    def __iter__(self) -> Iterable[tuple[Tensor, Tensor]]:
         for n in range(len(self)):
             yield self[n]
 
@@ -107,7 +107,7 @@ def make_sequence_datasets(
     return SequenceDatasets(train_ds, test_ds, val_ds, tokenizer)
 
 
-def pad_seq2seq_data(batch: List[Tuple[int, int]]) -> Tuple[Tensor, Tensor]:
+def pad_seq2seq_data(batch: list[tuple[int, int]]) -> tuple[Tensor, Tensor]:
     """Pad sequence2sequence data tuples."""
     x = [e[0] for e in batch]
     y = [e[1] for e in batch]
@@ -119,22 +119,22 @@ def pad_seq2seq_data(batch: List[Tuple[int, int]]) -> Tuple[Tensor, Tensor]:
 class _Tokenizer(ABC):
     """Abstract base class for text tokenizers."""
 
-    def __call__(self, text: str) -> List[int]:
+    def __call__(self, text: str) -> list[int]:
         return self.text2tokens(text)
 
     @abstractmethod
-    def text2tokens(self, text: str) -> List[int]:
+    def text2tokens(self, text: str) -> list[int]:
         pass
 
     @abstractmethod
-    def tokens2text(self, token: List[int]) -> str:
+    def tokens2text(self, token: list[int]) -> str:
         pass
 
 
 class IMDBTokenizer(_Tokenizer):
     """Word to integer tokenisation for use with any dataset or model."""
 
-    def __init__(self, reviews: List[str], min_word_freq: int = 2):
+    def __init__(self, reviews: list[str], min_word_freq: int = 2):
         reviews_doc = " ".join(reviews)
         token_counter = Counter(self._tokenize(reviews_doc))
         token_freqs = sorted(token_counter.items(), key=lambda e: e[1], reverse=True)
@@ -145,14 +145,14 @@ class IMDBTokenizer(_Tokenizer):
         self.vocab = _vocab
         self.vocab_size = len(self.vocab)
 
-    def text2tokens(self, text: str) -> List[int]:
+    def text2tokens(self, text: str) -> list[int]:
         return self.vocab(self._tokenize(text))
 
-    def tokens2text(self, tokens: List[int]) -> str:
+    def tokens2text(self, tokens: list[int]) -> str:
         return self.vocab.lookup_tokens(tokens)
 
     @staticmethod
-    def _tokenize(text: str) -> List[str]:
+    def _tokenize(text: str) -> list[str]:
         """Basic tokenizer that can strip HTML."""
         text = re.sub(r"[\.\?](\s|$)", EOS_DELIM, text)
         text = re.sub(r"<[^>]*>", "", text)
