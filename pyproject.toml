@@ -1,6 +1,6 @@
 [project]
 name = "modelling"
-version = "0.2.0
+version = "0.3.0"
 authors = [
   { name="Alex Ioannides", email="alex@bodyworkml.com" },
 ]
@@ -12,6 +12,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "pandas==2.0.1",
+    "portalocker==2.7.0",
     "seaborn==0.12.2",
     "torch==2.0.1",
     "torchtext==0.15.2",
