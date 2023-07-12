@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from functools import partial
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from torch import (
     arange,
@@ -125,7 +125,7 @@ def _train_step(
     loss_fn: Callable[[Tensor, Tensor], Tensor],
     optimizer: Optimizer,
     lr_scheduler: LRScheduler,
-    clip_grads: float = None
+    clip_grads: Optional[float] = None
 ) -> float:
     """One iteration of the training loop (for one batch)."""
     model.train()
@@ -162,9 +162,9 @@ def train(
     n_epochs: int,
     learning_rate: float = 0.001,
     warmup_epochs: float = 0.5,
-    clip_grads: float = None,
+    clip_grads: Optional[float] = None,
     random_seed: int = 42,
-) -> Dict[int, float]:
+) -> Tuple[Dict[int, float], Dict[int, float]]:
     """Training loop for transformer decoder."""
     manual_seed(random_seed)
     device = get_device()

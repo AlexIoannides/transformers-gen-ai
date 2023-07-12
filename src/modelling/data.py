@@ -23,7 +23,7 @@ UNKOWN_TOKEN_IDX = 1
 TORCH_DATA_STORAGE_PATH = Path(".data")
 
 
-def get_data() -> Tuple[DataFrame, DataFrame]:
+def get_data() -> DataFrame:
     """Download raw data and convert to Pandas DataFrame."""
     if not TORCH_DATA_STORAGE_PATH.exists():
         warnings.warn("Downloading IMDB data - this may take a minute or two.")
@@ -48,7 +48,7 @@ class FilmReviewSequences(Dataset):
 
     def __init__(
         self,
-        tokenized_reviews: List[int],
+        tokenized_reviews: List[List[int]],
         seq_len: int = 40,
         random_chunks: bool = True
     ):
@@ -116,17 +116,17 @@ def pad_seq2seq_data(batch: List[Tuple[int, int]]) -> Tuple[Tensor, Tensor]:
     return x_padded, y_padded
 
 
-class BasePreprocessor:
-    """Basic pre-processor for use as a collate_fn for DataLoaders."""
+# class BasePreprocessor:
+#     """Basic pre-processor for use as a collate_fn for DataLoaders."""
 
-    def __init__(self):
-        self._tokenizer = IMDBTokenizer()
+#     def __init__(self):
+#         self._tokenizer = IMDBTokenizer()
 
-    def __call__(self, batch: List[Tuple[str, int]]) -> Tuple[Tensor, Tensor, Tensor]:
-        y = [tensor(e) for _, e in batch]
-        x = [tensor(self._tokenizer(review)) for review, _ in batch]
-        x_padded = pad_sequence(x, batch_first=True)
-        return x_padded, y
+#     def __call__(self, batch: List[Tuple[str, int]]) -> Tuple[Tensor, Tensor, Tensor]:
+#         y = [tensor(e) for _, e in batch]
+#         x = [tensor(self._tokenizer(review)) for review, _ in batch]
+#         x_padded = pad_sequence(x, batch_first=True)
+#         return x_padded, y
 
 
 class _Tokenizer(ABC):
