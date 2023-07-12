@@ -1,15 +1,15 @@
 """Language modelling using RNNs."""
 from typing import Callable, Dict, Tuple
 
-from torch import device, manual_seed, tensor, Tensor, zeros
+from torch import Tensor, device, manual_seed, tensor, zeros
 from torch.distributions import Categorical
-from torch.nn import CrossEntropyLoss, Embedding, Linear, Module, LSTM
-from torch.utils.data import DataLoader
+from torch.nn import LSTM, CrossEntropyLoss, Embedding, Linear, Module
 from torch.optim import Adam, Optimizer
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .data import _Tokenizer, EOS_DELIM, PAD_TOKEN_IDX
-from .utils import capitalise_sentences, _early_stop, get_device
+from .data import EOS_DELIM, PAD_TOKEN_IDX, _Tokenizer
+from .utils import _early_stop, capitalise_sentences, get_device
 
 
 class NextWordPredictionRNN(Module):

@@ -10,12 +10,12 @@ from pathlib import Path
 from random import randint
 from typing import Iterable, List, NamedTuple, Tuple
 
-from pandas import concat, DataFrame
-from torch import tensor, Tensor
+from pandas import DataFrame, concat
+from torch import Tensor, tensor
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
 from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
-from torch.utils.data import Dataset
 
 EOS_DELIM = " endofsentence "
 PAD_TOKEN_IDX = 0

@@ -5,39 +5,20 @@ import math
 from functools import partial
 from typing import Callable, Dict, Optional, Tuple
 
-from torch import (
-    arange,
-    cos,
-    device,
-    exp,
-    log,
-    manual_seed,
-    ones,
-    tensor,
-    sin,
-    sqrt,
-    Tensor,
-    tril,
-    zeros,
-)
+from torch import (Tensor, arange, cos, device, exp, log, manual_seed, ones,
+                   sin, sqrt, tensor, tril, zeros)
 from torch.distributions import Categorical
-from torch.nn import (
-    CrossEntropyLoss,
-    Dropout,
-    Embedding,
-    Linear,
-    Module,
-    TransformerDecoderLayer,
-)
+from torch.nn import (CrossEntropyLoss, Dropout, Embedding, Linear, Module,
+                      TransformerDecoderLayer)
 from torch.nn.init import xavier_uniform_
 from torch.nn.utils import clip_grad_norm_
-from torch.utils.data import DataLoader
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import LambdaLR, LRScheduler
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .data import _Tokenizer, EOS_DELIM, PAD_TOKEN_IDX
-from .utils import capitalise_sentences, _early_stop, get_device
+from .data import EOS_DELIM, PAD_TOKEN_IDX, _Tokenizer
+from .utils import _early_stop, capitalise_sentences, get_device
 
 
 class NextWordPredictionTransformer(Module):
