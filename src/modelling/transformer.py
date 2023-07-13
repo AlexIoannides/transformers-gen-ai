@@ -13,6 +13,7 @@ from torch import (
     exp,
     log,
     manual_seed,
+    no_grad,
     ones,
     sin,
     sqrt,
@@ -36,8 +37,8 @@ from torch.optim.lr_scheduler import LambdaLR, LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .data import EOS_DELIM, PAD_TOKEN_IDX, _Tokenizer
-from .utils import _early_stop, capitalise_sentences, get_device
+from modelling.data import EOS_DELIM, PAD_TOKEN_IDX, _Tokenizer
+from modelling.utils import _early_stop, capitalise_sentences, get_best_device
 
 
 class NextWordPredictionTransformer(Module):
@@ -81,8 +82,12 @@ class NextWordPredictionTransformer(Module):
     def _make_mask(self, x: Tensor) -> tuple[Tensor, Tensor]:
         """Make causal and padding masks."""
         causal_mask = ones(x.size(0) * self._n_heads, x.size(1), x.size(1))
-        causal_mask = tril(causal_mask) == 0
-        padding_mask = x == PAD_TOKEN_IDX
+        causal_mask[tril(causal_mask) == 0] = -1e10
+        causal_mask[causal_mask == 1] = 0.
+
+        padding_mask = zeros(x.size())
+        padding_mask[x == PAD_TOKEN_IDX] = -1e10
+
         return causal_mask.to(x.device), padding_mask.to(x.device)
 
 
@@ -126,33 +131,34 @@ def _train_step(
     optimizer: Optimizer,
     lr_scheduler: LRScheduler,
     clip_grads: float | None = None,
-) -> float:
+) -> Tensor:
     """One iteration of the training loop (for one batch)."""
     model.train()
     y_pred = model(x_batch)
     loss_batch = loss_fn(y_pred.permute(0, 2, 1), y_batch)
 
-    optimizer.zero_grad()
+    optimizer.zero_grad(set_to_none=True)
     loss_batch.backward()
     if clip_grads:
         clip_grad_norm_(model.parameters(), clip_grads)
     optimizer.step()
     lr_scheduler.step()
 
-    return loss_batch.item()
+    return loss_batch
 
 
+@no_grad()
 def _val_step(
     x_batch: Tensor,
     y_batch: Tensor,
     model: Module,
     loss_fn: Callable[[Tensor, Tensor], Tensor],
-) -> float:
+) -> Tensor:
     """One iteration of the validation loop (for one batch)."""
     model.eval()
     y_pred = model(x_batch)
     loss_batch = loss_fn(y_pred.permute(0, 2, 1), y_batch)
-    return loss_batch.item()
+    return loss_batch
 
 
 def train(
@@ -164,10 +170,10 @@ def train(
     warmup_epochs: float = 0.5,
     clip_grads: float | None = None,
     random_seed: int = 42,
+    device: device = get_best_device()
 ) -> tuple[dict[int, float], dict[int, float]]:
     """Training loop for transformer decoder."""
     manual_seed(random_seed)
-    device = get_device()
     model.to(device)
 
     optimizer = Adam(model.parameters(), lr=learning_rate)
@@ -184,7 +190,7 @@ def train(
 
     print(f"number of warmup steps: {n_warmup_steps} / {n_steps}")
     for epoch in range(1, n_epochs + 1):
-        loss_train = 0.0
+        loss_train = tensor(0.0).to(device)
         for i, (x_batch, y_batch) in enumerate((pbar := tqdm(train_data)), start=1):
             x = x_batch.to(device, non_blocking=True)
             y = y_batch.to(device, non_blocking=True)
@@ -194,14 +200,14 @@ def train(
                 f"epoch {epoch} training loss = {loss_train/i:.4f} (LR = {lr:.8f})"
             )
 
-        loss_val = 0.0
+        loss_val = tensor(0.0).to(device)
         for x_batch, y_batch in val_data:
             x = x_batch.to(device, non_blocking=True)
             y = y_batch.to(device, non_blocking=True)
             loss_val += _val_step(x, y, model, loss_fn)
 
-        train_losses[epoch] = loss_train / len(train_data)
-        val_losses[epoch] = loss_val / len(val_data)
+        train_losses[epoch] = loss_train.item() / len(train_data)
+        val_losses[epoch] = loss_val.item() / len(val_data)
 
         if epoch == 1 or val_losses[epoch] < min(val_losses.values()):
             best_checkpoint = {
@@ -228,18 +234,18 @@ def generate(
     output_length: int = 40,
     temperature: float = 1.0,
     random_seed: int = 42,
-    device_: device = device("cpu"),
+    device: device = get_best_device(),
 ) -> str:
     """Generate new text conditional on a text prompt."""
     manual_seed(random_seed)
 
-    model.to(device_)
+    model.to(device)
     model.eval()
 
     prompt_tokens = tokenizer(prompt)
     token_sequence = prompt_tokens.copy()
     for _ in range(output_length):
-        x = tensor([token_sequence], device=device_)
+        x = tensor([token_sequence], device=device)
         token_logits = model(x)
         token_pred = Categorical(logits=temperature * token_logits[0, -1]).sample()
         token_sequence += [token_pred.item()]

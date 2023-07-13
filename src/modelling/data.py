@@ -50,11 +50,11 @@ class FilmReviewSequences(Dataset):
         self,
         tokenized_reviews: list[list[int]],
         seq_len: int = 40,
-        random_chunks: bool = True,
+        rnd_chunks: bool = False,
     ):
         self._tokenized_reviews = tokenized_reviews
         self._chunk_size = seq_len + 1
-        self._rnd_chunks = random_chunks
+        self._rnd_chunks = rnd_chunks
 
     def __len__(self) -> int:
         return len(self._tokenized_reviews) - self._chunk_size
@@ -101,8 +101,8 @@ def make_sequence_datasets(
     n_val = math.floor(n_train * train_val_split)
 
     train_ds = FilmReviewSequences(reviews_tok[n_val:n_train], seq_len)
-    val_ds = FilmReviewSequences(reviews_tok[:n_val], seq_len, random_chunks=False)
-    test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len, random_chunks=False)
+    val_ds = FilmReviewSequences(reviews_tok[:n_val], seq_len)
+    test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len)
 
     return SequenceDatasets(train_ds, test_ds, val_ds, tokenizer)
 

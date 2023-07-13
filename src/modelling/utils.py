@@ -12,8 +12,8 @@ from torch.nn import Module
 TORCH_MODEL_STORAGE_PATH = Path(".models")
 
 
-def get_device() -> device:
-    """Run on CPUs or GPUs."""
+def get_best_device() -> device:
+    """Return the best device available on the machine."""
     if mps.is_available():
         return device("mps")
     else:
