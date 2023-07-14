@@ -86,7 +86,7 @@ class SequenceDatasets(NamedTuple):
 
 
 def make_sequence_datasets(
-    train_test_split: float = 0.2,
+    train_test_split: float = 0.1,
     train_val_split: float = 0.05,
     seq_len: int = 40,
     min_word_freq: int = 2,
