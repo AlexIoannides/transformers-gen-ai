@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+import string
 import warnings
 from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
@@ -17,7 +18,8 @@ from torch.utils.data import Dataset
 from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
 
-EOS_DELIM = " endofsentence "
+EOS_TOKEN = "endofsentence"
+QM_TOKEN = "questionmark"
 PAD_TOKEN_IDX = 0
 UNKOWN_TOKEN_IDX = 1
 TORCH_DATA_STORAGE_PATH = Path(".data")
@@ -149,16 +151,23 @@ class IMDBTokenizer(_Tokenizer):
         return self.vocab(self._tokenize(text))
 
     def tokens2text(self, tokens: list[int]) -> str:
-        return self.vocab.lookup_tokens(tokens)
+        text = " ".join(self.vocab.lookup_tokens(tokens))
+        text = re.sub(rf"\s{EOS_TOKEN}", ".", text)
+        text = re.sub(rf"\s{QM_TOKEN}", "?", text)
+        return text.strip()
+
+    @staticmethod
+    def _standardise(text: str) -> str:
+        """Remove punctuation, HTML and make lower case."""
+        text = text.lower().strip()
+        text = re.sub(r"<[^>]*>", "", text)
+        text = [char for char in text if char not in string.punctuation]
+        return "".join(text)
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
-        """Basic tokenizer that can strip HTML."""
-        text = re.sub(r"[\.\?](\s|$)", EOS_DELIM, text)
-        text = re.sub(r"<[^>]*>", "", text)
-        emoticons = re.findall(r"(?::|;|=)(?:-)?(?:\)|\(|D|P)", text.lower())
-        text = re.sub(r"[\W]+", " ", text.lower()) + " ".join(emoticons).replace(
-            "-", ""
-        )
-        tokenized = text.split()
-        return tokenized
+        """Basic tokenizer."""
+        text = re.sub(r"\.", f" {EOS_TOKEN}", text)
+        text = re.sub(r"\?", f" {QM_TOKEN}", text)
+        text = IMDBTokenizer._standardise(text)
+        return text.split()

@@ -8,7 +8,7 @@ from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from modelling.data import EOS_DELIM, PAD_TOKEN_IDX, _Tokenizer
+from modelling.data import EOS_TOKEN, PAD_TOKEN_IDX, _Tokenizer
 from modelling.utils import _early_stop, capitalise_sentences, get_best_device
 
 
@@ -165,6 +165,6 @@ def generate(
 
     new_token_sequence = token_sequence[len(prompt_tokens) :]
     new_text = " " + " ".join(tokenizer.tokens2text(new_token_sequence))
-    new_text = capitalise_sentences(new_text, sentence_delimiter=EOS_DELIM)
-    new_text = new_text.replace(EOS_DELIM, ". ")
+    new_text = capitalise_sentences(new_text, sentence_delimiter=EOS_TOKEN)
+    new_text = new_text.replace(EOS_TOKEN, ". ")
     return "==> " + prompt.upper() + new_text + "..."
