@@ -2,6 +2,7 @@
 .data
 .models
 .pytype
+.ruff_cache
 __pycache__
 .vscode
 .DS_store
