@@ -44,7 +44,7 @@ from modelling.utils import _early_stop, capitalise_sentences, get_best_device
 class NextWordPredictionTransformer(Module):
     """Transformer for predicting the next tokens in a sequence."""
 
-    def __init__(self, size_vocab: int, size_embed: int, n_heads: int = 2):
+    def __init__(self, size_vocab: int, size_embed: int, n_heads: int = 4):
         super().__init__()
         self._size_vocab = size_vocab
         self._size_embed = size_embed
