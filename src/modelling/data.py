@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+import string
 import warnings
 from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
@@ -17,7 +18,8 @@ from torch.utils.data import Dataset
 from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
 
-EOS_DELIM = " endofsentence "
+EOS_TOKEN = "endofsentence"
+QM_TOKEN = "questionmark"
 PAD_TOKEN_IDX = 0
 UNKOWN_TOKEN_IDX = 1
 TORCH_DATA_STORAGE_PATH = Path(".data")
@@ -50,11 +52,11 @@ class FilmReviewSequences(Dataset):
         self,
         tokenized_reviews: list[list[int]],
         seq_len: int = 40,
-        random_chunks: bool = True,
+        rnd_chunks: bool = False,
     ):
         self._tokenized_reviews = tokenized_reviews
         self._chunk_size = seq_len + 1
-        self._rnd_chunks = random_chunks
+        self._rnd_chunks = rnd_chunks
 
     def __len__(self) -> int:
         return len(self._tokenized_reviews) - self._chunk_size
@@ -86,7 +88,7 @@ class SequenceDatasets(NamedTuple):
 
 
 def make_sequence_datasets(
-    train_test_split: float = 0.2,
+    train_test_split: float = 0.1,
     train_val_split: float = 0.05,
     seq_len: int = 40,
     min_word_freq: int = 2,
@@ -100,9 +102,9 @@ def make_sequence_datasets(
     n_train = math.floor(n_reviews * (1 - train_test_split))
     n_val = math.floor(n_train * train_val_split)
 
-    train_ds = FilmReviewSequences(reviews_tok[n_val:n_train], seq_len)
-    val_ds = FilmReviewSequences(reviews_tok[:n_val], seq_len, random_chunks=False)
-    test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len, random_chunks=False)
+    train_ds = FilmReviewSequences(reviews_tok[n_val:n_train], seq_len, rnd_chunks=True)
+    val_ds = FilmReviewSequences(reviews_tok[:n_val], seq_len, rnd_chunks=False)
+    test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len, rnd_chunks=True)
 
     return SequenceDatasets(train_ds, test_ds, val_ds, tokenizer)
 
@@ -149,16 +151,23 @@ class IMDBTokenizer(_Tokenizer):
         return self.vocab(self._tokenize(text))
 
     def tokens2text(self, tokens: list[int]) -> str:
-        return self.vocab.lookup_tokens(tokens)
+        text = " ".join(self.vocab.lookup_tokens(tokens))
+        text = re.sub(rf"\s{EOS_TOKEN}", ".", text)
+        text = re.sub(rf"\s{QM_TOKEN}", "?", text)
+        return text.strip()
+
+    @staticmethod
+    def _standardise(text: str) -> str:
+        """Remove punctuation, HTML and make lower case."""
+        text = text.lower().strip()
+        text = re.sub(r"<[^>]*>", "", text)
+        text = [char for char in text if char not in string.punctuation]
+        return "".join(text)
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
-        """Basic tokenizer that can strip HTML."""
-        text = re.sub(r"[\.\?](\s|$)", EOS_DELIM, text)
-        text = re.sub(r"<[^>]*>", "", text)
-        emoticons = re.findall(r"(?::|;|=)(?:-)?(?:\)|\(|D|P)", text.lower())
-        text = re.sub(r"[\W]+", " ", text.lower()) + " ".join(emoticons).replace(
-            "-", ""
-        )
-        tokenized = text.split()
-        return tokenized
+        """Basic tokenizer."""
+        text = re.sub(r"\.", f" {EOS_TOKEN}", text)
+        text = re.sub(r"\?", f" {QM_TOKEN}", text)
+        text = IMDBTokenizer._standardise(text)
+        return text.split()
