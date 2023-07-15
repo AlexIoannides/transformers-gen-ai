@@ -117,22 +117,22 @@ def decode(
     strategy: Literal["greedy", "sample", "topk"] = "greedy",
     temperature: float = 1.0,
     *,
-    k: int = 5
+    k: int = 5,
 ) -> Tensor:
     """Decode generative model output using the specified strategy."""
     match strategy:
         case "greedy":
-            token_pred = _greedy_decoding(token_logits, temperature)
+            return _greedy_decoding(token_logits, temperature)
         case "topk":
-            token_pred = _top_k_decoding(token_logits, temperature, k)
+            return _top_k_decoding(token_logits, temperature, k)
         case "sample":
-            token_pred = _sample_decoding(token_logits, temperature)
-    return token_pred        
+            return _sample_decoding(token_logits, temperature)
+
 
 
 def _capitalise_sentences(text: str, sentence_delimiter: str = ". ") -> str:
     """Capitalise the first letter of sentences in text passage."""
-    sentences = text.split(sentence_delimiter)  
+    sentences = text.split(sentence_delimiter)
     sentences = [sentence[:1].upper() + sentence[1:] for sentence in sentences]
     return sentence_delimiter.join(sentences)
 

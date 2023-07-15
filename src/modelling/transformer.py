@@ -37,7 +37,13 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from modelling.data import PAD_TOKEN_IDX, _Tokenizer
-from modelling.utils import _early_stop, ModelCheckpoint, decode, format_generated_words, get_best_device
+from modelling.utils import (
+    ModelCheckpoint,
+    _early_stop,
+    decode,
+    format_generated_words,
+    get_best_device,
+)
 
 
 class NextWordPredictionTransformer(Module):
@@ -165,7 +171,7 @@ def train(
     warmup_epochs: float = 0.5,
     clip_grads: float | None = None,
     random_seed: int = 42,
-    device: device = get_best_device()
+    device: device = get_best_device(),
 ) -> tuple[dict[int, float], dict[int, float], ModelCheckpoint]:
     """Training loop for transformer decoder."""
     manual_seed(random_seed)

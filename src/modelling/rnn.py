@@ -8,7 +8,13 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from modelling.data import PAD_TOKEN_IDX, _Tokenizer
-from modelling.utils import _early_stop, ModelCheckpoint, decode, format_generated_words, get_best_device
+from modelling.utils import (
+    ModelCheckpoint,
+    _early_stop,
+    decode,
+    format_generated_words,
+    get_best_device,
+)
 
 
 class NextWordPredictionRNN(Module):
@@ -64,7 +70,7 @@ def _val_step(
     y_batch: Tensor,
     model: Module,
     loss_fn: Callable[[Tensor, Tensor], Tensor],
-    device: device
+    device: device,
 ) -> Tensor:
     """One iteration of the validation loop (for one batch)."""
     model.eval()
