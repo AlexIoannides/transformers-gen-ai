@@ -1,15 +1,26 @@
 """Helper functions."""
+import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
+from textwrap import wrap
+from typing import Any, Dict, Literal, NamedTuple
 
 from pandas import DataFrame
 from seaborn import lineplot
-from torch import device, load, save
+from torch import Tensor, argmax, device, load, save, topk
 from torch.backends import mps
+from torch.distributions import Categorical
 from torch.nn import Module
 
 TORCH_MODEL_STORAGE_PATH = Path(".models")
+
+
+class ModelCheckpoint(NamedTuple):
+    "Model checkpoint data."
+    epoch: int
+    train_loss: float
+    val_loss: float
+    state_dict: Dict[str, Any]
 
 
 def get_best_device() -> device:
@@ -58,13 +69,6 @@ def load_model(name: str, latest: bool = False) -> Module:
     return model
 
 
-def capitalise_sentences(text: str, sentence_delimiter: str = ". ") -> str:
-    """Capitalise the first letter of sentences in text passage."""
-    sentences = text.split(sentence_delimiter)  
-    sentences = [sentence.capitalize() for sentence in sentences]
-    return sentence_delimiter.join(sentences)
-
-
 def plot_train_losses(
     train_losses: Dict[int, float], val_losses: Dict[int, float]
 ) -> None:
@@ -87,3 +91,56 @@ def _early_stop(train_loss: Dict[int, float], epoch_window: int = 3) -> bool:
             return True
         else:
             return False
+
+
+def _sample_decoding(logits: Tensor, temperature: float = 1.0) -> Tensor:
+    """Generate next token using sample decoding strategy."""
+    return Categorical(logits=temperature * logits.squeeze()).sample()
+
+
+def _top_k_decoding(logits: Tensor, temperature: float = 1.0, k: int = 3) -> Tensor:
+    """Generate next token using top-k decoding strategy."""
+    token_probs = Categorical(logits=temperature * logits.squeeze()).probs
+    top_k_tokens = topk(token_probs, k=k)
+    sampled_token = Categorical(probs=top_k_tokens.values).sample()
+    return top_k_tokens.indices[sampled_token]
+
+
+def _greedy_decoding(logits: Tensor, temperature: float = 1.0) -> Tensor:
+    """Generate next token using greedy decoding strategy."""
+    token_probs = Categorical(logits=temperature * logits.squeeze()).probs
+    return argmax(token_probs)
+
+
+def decode(
+    token_logits: Tensor,
+    strategy: Literal["greedy", "sample", "topk"] = "greedy",
+    temperature: float = 1.0,
+    *,
+    k: int = 5
+) -> Tensor:
+    """Decode generative model output using the specified strategy."""
+    match strategy:
+        case "greedy":
+            token_pred = _greedy_decoding(token_logits, temperature)
+        case "topk":
+            token_pred = _top_k_decoding(token_logits, temperature, k)
+        case "sample":
+            token_pred = _sample_decoding(token_logits, temperature)
+    return token_pred        
+
+
+def _capitalise_sentences(text: str, sentence_delimiter: str = ". ") -> str:
+    """Capitalise the first letter of sentences in text passage."""
+    sentences = text.split(sentence_delimiter)  
+    sentences = [sentence[:1].upper() + sentence[1:] for sentence in sentences]
+    return sentence_delimiter.join(sentences)
+
+
+def format_generated_words(text: str, prompt: str) -> str:
+    """Format list of words into a readable paragraph."""
+    text = re.sub(r" i ", " I ", text)
+    text = _capitalise_sentences(text, sentence_delimiter=". ")
+    text = text if text[0] == "I" else text[:1].lower() + text[1:]
+    text = "==> " + prompt.upper() + " " + text + "..."
+    return "\n".join([line for line in wrap(text, width=89)])

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from functools import partial
-from typing import Callable
+from typing import Callable, Literal
 
 from torch import (
     Tensor,
@@ -21,7 +21,6 @@ from torch import (
     tril,
     zeros,
 )
-from torch.distributions import Categorical
 from torch.nn import (
     CrossEntropyLoss,
     Dropout,
@@ -37,8 +36,8 @@ from torch.optim.lr_scheduler import LambdaLR, LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from modelling.data import EOS_TOKEN, PAD_TOKEN_IDX, _Tokenizer
-from modelling.utils import _early_stop, capitalise_sentences, get_best_device
+from modelling.data import PAD_TOKEN_IDX, _Tokenizer
+from modelling.utils import _early_stop, ModelCheckpoint, decode, format_generated_words, get_best_device
 
 
 class NextWordPredictionTransformer(Module):
@@ -82,12 +81,8 @@ class NextWordPredictionTransformer(Module):
     def _make_mask(self, x: Tensor) -> tuple[Tensor, Tensor]:
         """Make causal and padding masks."""
         causal_mask = ones(x.size(0) * self._n_heads, x.size(1), x.size(1))
-        causal_mask[tril(causal_mask) == 0] = -1e10
-        causal_mask[causal_mask == 1] = 0.
-
-        padding_mask = zeros(x.size())
-        padding_mask[x == PAD_TOKEN_IDX] = -1e10
-
+        causal_mask = tril(causal_mask) == 0
+        padding_mask = x == PAD_TOKEN_IDX
         return causal_mask.to(x.device), padding_mask.to(x.device)
 
 
@@ -171,7 +166,7 @@ def train(
     clip_grads: float | None = None,
     random_seed: int = 42,
     device: device = get_best_device()
-) -> tuple[dict[int, float], dict[int, float]]:
+) -> tuple[dict[int, float], dict[int, float], ModelCheckpoint]:
     """Training loop for transformer decoder."""
     manual_seed(random_seed)
     model.to(device)
@@ -206,35 +201,39 @@ def train(
             y = y_batch.to(device, non_blocking=True)
             loss_val += _val_step(x, y, model, loss_fn)
 
-        train_losses[epoch] = loss_train.item() / len(train_data)
-        val_losses[epoch] = loss_val.item() / len(val_data)
+        epoch_train_loss = loss_train.item() / len(train_data)
+        epoch_val_loss = loss_val.item() / len(val_data)
 
-        if epoch == 1 or val_losses[epoch] < min(val_losses.values()):
-            best_checkpoint = {
-                "state_dict": model.state_dict().copy(),
-                "loss": val_losses[epoch],
-                "epoch": epoch,
-            }
+        if epoch == 1 or epoch_val_loss < min(val_losses.values()):
+            best_checkpoint = ModelCheckpoint(
+                epoch, epoch_train_loss, epoch_val_loss, model.state_dict().copy()
+            )
+
+        train_losses[epoch] = epoch_train_loss
+        val_losses[epoch] = epoch_val_loss
 
         if _early_stop(val_losses):
             break
 
     print("\nbest model:")
-    print(f"|-- epoch: {best_checkpoint['epoch']}")
-    print(f"|-- loss: {best_checkpoint['loss']:.4f}")
-    model.load_state_dict(best_checkpoint["state_dict"])
+    print(f"|-- epoch: {best_checkpoint.epoch}")
+    print(f"|-- loss: {best_checkpoint.val_loss:.4f}")
+    model.load_state_dict(best_checkpoint.state_dict)
 
-    return train_losses, val_losses
+    return train_losses, val_losses, best_checkpoint
 
 
 def generate(
     model: NextWordPredictionTransformer,
     prompt: str,
     tokenizer: _Tokenizer,
-    output_length: int = 40,
+    strategy: Literal["greedy", "sample", "topk"] = "greedy",
+    output_length: int = 60,
     temperature: float = 1.0,
     random_seed: int = 42,
     device: device = get_best_device(),
+    *,
+    k: int = 2,
 ) -> str:
     """Generate new text conditional on a text prompt."""
     manual_seed(random_seed)
@@ -247,11 +246,9 @@ def generate(
     for _ in range(output_length):
         x = tensor([token_sequence], device=device)
         token_logits = model(x)
-        token_pred = Categorical(logits=temperature * token_logits[0, -1]).sample()
+        token_pred = decode(token_logits[0, -1], strategy, temperature, k=k)
         token_sequence += [token_pred.item()]
 
     new_token_sequence = token_sequence[len(prompt_tokens) :]
-    new_text = " " + " ".join(tokenizer.tokens2text(new_token_sequence))
-    new_text = capitalise_sentences(new_text, sentence_delimiter=EOS_TOKEN)
-    new_text = new_text.replace(EOS_TOKEN, ". ")
-    return "==> " + prompt.upper() + new_text + "..."
+    new_token_sequence = token_sequence[len(prompt_tokens) :]
+    return format_generated_words(tokenizer.tokens2text(new_token_sequence), prompt)

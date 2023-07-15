@@ -102,9 +102,9 @@ def make_sequence_datasets(
     n_train = math.floor(n_reviews * (1 - train_test_split))
     n_val = math.floor(n_train * train_val_split)
 
-    train_ds = FilmReviewSequences(reviews_tok[n_val:n_train], seq_len)
-    val_ds = FilmReviewSequences(reviews_tok[:n_val], seq_len)
-    test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len)
+    train_ds = FilmReviewSequences(reviews_tok[n_val:n_train], seq_len, rnd_chunks=True)
+    val_ds = FilmReviewSequences(reviews_tok[:n_val], seq_len, rnd_chunks=False)
+    test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len, rnd_chunks=True)
 
     return SequenceDatasets(train_ds, test_ds, val_ds, tokenizer)
 

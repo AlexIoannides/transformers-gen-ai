@@ -1,15 +1,14 @@
 """Language modelling using RNNs."""
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Literal, Tuple
 
 from torch import Tensor, device, manual_seed, no_grad, tensor, zeros
-from torch.distributions import Categorical
 from torch.nn import LSTM, CrossEntropyLoss, Embedding, Linear, Module
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from modelling.data import EOS_TOKEN, PAD_TOKEN_IDX, _Tokenizer
-from modelling.utils import _early_stop, capitalise_sentences, get_best_device
+from modelling.data import PAD_TOKEN_IDX, _Tokenizer
+from modelling.utils import _early_stop, ModelCheckpoint, decode, format_generated_words, get_best_device
 
 
 class NextWordPredictionRNN(Module):
@@ -89,7 +88,7 @@ def train(
     learning_rate: float = 0.001,
     random_seed: int = 42,
     device: device = get_best_device(),
-) -> Tuple[Dict[int, float], Dict[int, float]]:
+) -> Tuple[Dict[int, float], Dict[int, float], ModelCheckpoint]:
     """Training loop for LTSM flavoured RNNs on sequence data."""
     manual_seed(random_seed)
     model.to(device)
@@ -114,35 +113,38 @@ def train(
             y = y_batch.to(device, non_blocking=True)
             loss_val += _val_step(x, y, model, loss_fn, device)
 
-        train_losses[epoch] = loss_train.item() / len(train_data)
-        val_losses[epoch] = loss_val.item() / len(val_data)
+        epoch_train_loss = loss_train.item() / len(train_data)
+        epoch_val_loss = loss_val.item() / len(val_data)
 
-        if epoch == 1 or val_losses[epoch] < min(val_losses.values()):
-            best_checkpoint = {
-                "state_dict": model.state_dict().copy(),
-                "loss": val_losses[epoch],
-                "epoch": epoch,
-            }
+        if epoch == 1 or epoch_val_loss < min(val_losses.values()):
+            best_checkpoint = ModelCheckpoint(
+                epoch, epoch_train_loss, epoch_val_loss, model.state_dict().copy()
+            )
+        train_losses[epoch] = epoch_train_loss
+        val_losses[epoch] = epoch_val_loss
 
         if _early_stop(val_losses):
             break
 
     print("\nbest model:")
-    print(f"|-- epoch: {best_checkpoint['epoch']}")
-    print(f"|-- validation loss: {best_checkpoint['loss']:.4f}")
+    print(f"|-- epoch: {best_checkpoint.epoch}")
+    print(f"|-- validation loss: {best_checkpoint.val_loss:.4f}")
 
-    model.load_state_dict(best_checkpoint["state_dict"])
-    return train_losses, val_losses
+    model.load_state_dict(best_checkpoint.state_dict)
+    return train_losses, val_losses, best_checkpoint
 
 
 def generate(
     model: NextWordPredictionRNN,
     prompt: str,
     tokenizer: _Tokenizer,
+    strategy: Literal["greedy", "sample", "topk"] = "greedy",
     output_length: int = 60,
     temperature: float = 1.0,
     random_seed: int = 42,
-    device: device = get_best_device()
+    device: device = get_best_device(),
+    *,
+    k: int = 2,
 ) -> str:
     """Generate new text conditional on a text prompt."""
     manual_seed(random_seed)
@@ -151,6 +153,7 @@ def generate(
     model.eval()
 
     prompt_tokens = tokenizer(prompt)
+
     hidden, cell = model.initialise(1, device)
     for token in prompt_tokens[:-1]:
         x = tensor([token], device=device)
@@ -160,11 +163,8 @@ def generate(
     for _ in range(output_length):
         x = tensor([token_sequence[-1]], device=device)
         token_logits, hidden, cell = model(x, hidden, cell)
-        token_pred = Categorical(logits=temperature * token_logits).sample()
+        token_pred = decode(token_logits, strategy, temperature, k=k)
         token_sequence += [token_pred.item()]
 
     new_token_sequence = token_sequence[len(prompt_tokens) :]
-    new_text = " " + " ".join(tokenizer.tokens2text(new_token_sequence))
-    new_text = capitalise_sentences(new_text, sentence_delimiter=EOS_TOKEN)
-    new_text = new_text.replace(EOS_TOKEN, ". ")
-    return "==> " + prompt.upper() + new_text + "..."
+    return format_generated_words(tokenizer.tokens2text(new_token_sequence), prompt)
