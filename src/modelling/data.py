@@ -9,9 +9,15 @@ from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
 from pathlib import Path
 from random import randint
-from typing import Iterable, NamedTuple
+from typing import Iterable, Literal, NamedTuple
 
 from pandas import DataFrame, concat
+from tokenizers import Tokenizer
+from tokenizers.decoders import ByteLevel as ByteLevelDecoder
+from tokenizers.models import BPE
+from tokenizers.pre_tokenizers import ByteLevel as ByteLevelPre
+from tokenizers.processors import ByteLevel as ByteLevelPost
+from tokenizers.trainers import BpeTrainer
 from torch import Tensor, tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
@@ -90,12 +96,18 @@ class SequenceDatasets(NamedTuple):
 def make_sequence_datasets(
     train_test_split: float = 0.1,
     train_val_split: float = 0.05,
+    tokenizer_type: Literal["IMDBTokenizer", "GPTTokenizer"] = "IMDBTokenizer",
     seq_len: int = 40,
-    min_word_freq: int = 2,
+    min_freq: int = 2,
 ) -> SequenceDatasets:
     """Make train, validation and test datasets."""
     reviews = get_data()["review"].tolist()
-    tokenizer = IMDBTokenizer(reviews, min_word_freq)
+
+    if tokenizer_type == "GPTTokenizer":
+        tokenizer = GPTTokenizer(reviews, min_freq)
+    else:
+        tokenizer = IMDBTokenizer(reviews, min_freq)
+
     reviews_tok = [tokenizer(review) for review in reviews]
 
     n_reviews = len(reviews_tok)
@@ -134,7 +146,7 @@ class _Tokenizer(ABC):
 
 
 class IMDBTokenizer(_Tokenizer):
-    """Word to integer tokenisation for use with any dataset or model."""
+    """Word to integer tokenization for use with any dataset or model."""
 
     def __init__(self, reviews: list[str], min_word_freq: int = 2):
         reviews_doc = " ".join(reviews)
@@ -167,7 +179,28 @@ class IMDBTokenizer(_Tokenizer):
     @staticmethod
     def _tokenize(text: str) -> list[str]:
         """Basic tokenizer."""
+        text = (". ".join(sentence.strip() for sentence in text.split("."))).strip()
         text = re.sub(r"\.", f" {EOS_TOKEN}", text)
         text = re.sub(r"\?", f" {QM_TOKEN}", text)
         text = IMDBTokenizer._standardise(text)
         return text.split()
+
+
+class GPTTokenizer(_Tokenizer):
+    """Implementation of GPT's tokenizer based on Bytpe Pair Encoding (BPE)."""
+
+    def __init__(self, reviews: list[str], min_freq: int = 2) -> None:
+        tokenizer = Tokenizer(BPE(unk_token="[UNK]"))
+        tokenizer.pre_tokenizer = ByteLevelPre(add_prefix_space=False)
+        tokenizer.post_processor = ByteLevelPost()
+        tokenizer.decoder = ByteLevelDecoder()
+        tokenizer.train_from_iterator(reviews, BpeTrainer(special_tokens=["[UNK]"]))
+
+        self._tokenizer = tokenizer
+        self.vocab_size = tokenizer.get_vocab_size()
+
+    def text2tokens(self, text: str) -> list[int]:
+        return self._tokenizer.encode(text).ids
+
+    def tokens2text(self, tokens: list[int]) -> str:
+        return self._tokenizer.decode(tokens)
