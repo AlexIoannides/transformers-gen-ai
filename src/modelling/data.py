@@ -85,7 +85,7 @@ class FilmReviewSequences(Dataset):
 
 
 class SequenceDatasets(NamedTuple):
-    """Container for all experiment data."""
+    """Container for all sequence data."""
 
     train_data: FilmReviewSequences
     test_data: FilmReviewSequences
@@ -119,6 +119,72 @@ def make_sequence_datasets(
     test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len, rnd_chunks=True)
 
     return SequenceDatasets(train_ds, test_ds, val_ds, tokenizer)
+
+
+class FilmReviewSentiment(Dataset):
+    """IMDB film reviews and associated sentiment."""
+
+    def __init__(
+        self,
+        tokenized_reviews: list[list[int]],
+        review_sentiment: list[int],
+        seq_len: int = 40,
+    ):
+        if len(tokenized_reviews) != len(review_sentiment):
+            raise ValueError("len(tokenized_reviews) != len(review_sentiment)")
+        self._tokenized_reviews = tokenized_reviews
+        self._review_sentiment = review_sentiment
+        self._chunk_size = seq_len
+
+    def __len__(self) -> int:
+        return len(self._tokenized_reviewstokenized)
+
+    def __getitem__(self, idx: int) -> tuple[str, int]:
+        return (self._tokenized_reviews[idx], self._review_sentiment[idx])
+
+    def __iter__(self) -> Iterable[tuple[str, int]]:
+        yield from zip(self._tokenized_reviews, self._review_sentiment)
+
+
+class SentimentDatasets(NamedTuple):
+    """Container for all sentiment classification data."""
+
+    train_data: FilmReviewSentiment
+    test_data: FilmReviewSentiment
+    val_data: FilmReviewSentiment
+    tokenizer: IMDBTokenizer
+
+
+def make_sentiments_datasets(
+    train_test_split: float = 0.1,
+    train_val_split: float = 0.05,
+    tokenizer_type: Literal["IMDBTokenizer", "GPTTokenizer"] = "IMDBTokenizer",
+    seq_len: int = 40,
+    min_freq: int = 2,
+) -> SentimentDatasets:
+    """Make train, validation and test datasets."""
+    data = get_data()
+    reviews = data["reviews"].tolist()
+    sentiment = data["sentiment"].tolist()
+
+    if tokenizer_type == "GPTTokenizer":
+        tokenizer = GPTTokenizer(reviews, min_freq)
+    else:
+        tokenizer = IMDBTokenizer(reviews, min_freq)
+
+    reviews_tok = [tokenizer(review) for review in reviews]
+
+    n_reviews = len(reviews_tok)
+    n_train = math.floor(n_reviews * (1 - train_test_split))
+    n_val = math.floor(n_train * train_val_split)
+
+    train_ds = FilmReviewSentiment(
+        reviews_tok[n_val:n_train], sentiment[n_val:n_train], seq_len
+    )
+    val_ds = FilmReviewSentiment(reviews_tok[:n_val], sentiment[:n_val], seq_len)
+    test_ds = FilmReviewSentiment(reviews_tok[n_train:], sentiment[n_train:], seq_len)
+
+    return SentimentDatasets(train_ds, test_ds, val_ds, tokenizer)
 
 
 def pad_seq2seq_data(batch: list[tuple[int, int]]) -> tuple[Tensor, Tensor]:
