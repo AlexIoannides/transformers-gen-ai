@@ -23,6 +23,11 @@ class ModelCheckpoint(NamedTuple):
     state_dict: Dict[str, Any]
 
 
+def count_params(model: Module) -> int:
+    """Count the number of model parameters."""
+    return sum(len(p) for p in model.parameters())
+
+
 def get_best_device() -> device:
     """Return the best device available on the machine."""
     if mps.is_available():
@@ -143,3 +148,9 @@ def format_generated_words(text: str, prompt: str) -> str:
     text = text if text[0] == "I" else text[:1].lower() + text[1:]
     text = "==> " + prompt.upper().strip() + " " + text.strip() + "..."
     return "\n".join([line for line in wrap(text, width=89)])
+
+
+def print_wrapped(text: str, width: int = 89) -> None:
+    """Print text with word wrapping."""
+    wrapped_text = "\n".join(wrap(text, width=width))
+    print(wrapped_text)
