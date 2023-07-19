@@ -21,6 +21,8 @@ notebooks
 ├── 1_datasets_and_dataloaders.ipynb
 ├── 2_text_generation_with_rnns.ipynb
 └── 3_text_generation_with_transformers.ipynb
+└── 4_text_generation_with_transformers_and_bpe.ipynb
+└── 5_transformers_for_search.ipynb
 ```
 
 ## Installing
