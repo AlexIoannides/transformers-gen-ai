@@ -17,7 +17,7 @@ from tokenizers.models import BPE
 from tokenizers.pre_tokenizers import ByteLevel as ByteLevelPre
 from tokenizers.processors import ByteLevel as ByteLevelPost
 from tokenizers.trainers import BpeTrainer
-from torch import float32, Tensor, tensor
+from torch import Tensor, float32, tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from torchtext.datasets import IMDB
@@ -258,7 +258,8 @@ class IMDBTokenizer(_Tokenizer):
         """Basic tokenizer."""
         text = IMDBTokenizer._standardise(text)
         text = (". ".join(sentence.strip() for sentence in text.split("."))).strip()
-        text = re.sub(r"\.", f" {EOS_TOKEN}", text)
+        text = re.sub(r"\.", f" {EOS_TOKEN} ", text)
+        text = re.sub(r"\s+", " ", text)
         return text.split()
 
 
