@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import math
 import re
-import string
 import warnings
 from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
@@ -18,14 +17,14 @@ from tokenizers.models import BPE
 from tokenizers.pre_tokenizers import ByteLevel as ByteLevelPre
 from tokenizers.processors import ByteLevel as ByteLevelPost
 from tokenizers.trainers import BpeTrainer
-from torch import Tensor, tensor
+from torch import float32, Tensor, tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
+from unidecode import unidecode
 
 EOS_TOKEN = "endofsentence"
-QM_TOKEN = "questionmark"
 PAD_TOKEN_IDX = 0
 UNKOWN_TOKEN_IDX = 1
 TORCH_DATA_STORAGE_PATH = Path(".data")
@@ -137,13 +136,17 @@ class FilmReviewSentiment(Dataset):
         self._chunk_size = seq_len
 
     def __len__(self) -> int:
-        return len(self._tokenized_reviewstokenized)
+        return len(self._tokenized_reviews)
 
     def __getitem__(self, idx: int) -> tuple[str, int]:
-        return (self._tokenized_reviews[idx], self._review_sentiment[idx])
+        return (
+            tensor(self._tokenized_reviews[idx][:self._chunk_size]),
+            tensor([self._review_sentiment[idx]], dtype=float32)
+        )
 
-    def __iter__(self) -> Iterable[tuple[str, int]]:
-        yield from zip(self._tokenized_reviews, self._review_sentiment)
+    def __iter__(self) -> Iterable[tuple[Tensor, Tensor]]:
+        for n in range(len(self)):
+            yield self[n]
 
 
 class SentimentDatasets(NamedTuple):
@@ -155,7 +158,7 @@ class SentimentDatasets(NamedTuple):
     tokenizer: IMDBTokenizer
 
 
-def make_sentiments_datasets(
+def make_sentiment_datasets(
     train_test_split: float = 0.1,
     train_val_split: float = 0.05,
     tokenizer_type: Literal["IMDBTokenizer", "GPTTokenizer"] = "IMDBTokenizer",
@@ -164,7 +167,7 @@ def make_sentiments_datasets(
 ) -> SentimentDatasets:
     """Make train, validation and test datasets."""
     data = get_data()
-    reviews = data["reviews"].tolist()
+    reviews = data["review"].tolist()
     sentiment = data["sentiment"].tolist()
 
     if tokenizer_type == "GPTTokenizer":
@@ -214,7 +217,7 @@ class _Tokenizer(ABC):
 class IMDBTokenizer(_Tokenizer):
     """Word to integer tokenization for use with any dataset or model."""
 
-    def __init__(self, reviews: list[str], min_word_freq: int = 2):
+    def __init__(self, reviews: list[str], min_word_freq: int = 1):
         reviews_doc = " ".join(reviews)
         token_counter = Counter(self._tokenize(reviews_doc))
         token_freqs = sorted(token_counter.items(), key=lambda e: e[1], reverse=True)
@@ -231,24 +234,31 @@ class IMDBTokenizer(_Tokenizer):
     def tokens2text(self, tokens: list[int]) -> str:
         text = " ".join(self.vocab.lookup_tokens(tokens))
         text = re.sub(rf"\s{EOS_TOKEN}", ".", text)
-        text = re.sub(rf"\s{QM_TOKEN}", "?", text)
         return text.strip()
 
     @staticmethod
     def _standardise(text: str) -> str:
         """Remove punctuation, HTML and make lower case."""
         text = text.lower().strip()
+        text = unidecode(text)
         text = re.sub(r"<[^>]*>", "", text)
-        text = [char for char in text if char not in string.punctuation]
-        return "".join(text)
+        text = re.sub(r"mr.", "mr", text)
+        text = re.sub(r"mrs.", "mrs", text)
+        text = re.sub(r"ms.", "ms", text)
+        text = re.sub(r"(\!|\?)", ".", text)
+        text = re.sub(r"-", " ", text)
+        text = "".join(
+            char for char in text if char not in "\"#$%&\'()*+,/:;<=>@[\\]^_`{|}~"
+        )
+        text = re.sub(r"\.+", ".", text)
+        return text
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
         """Basic tokenizer."""
+        text = IMDBTokenizer._standardise(text)
         text = (". ".join(sentence.strip() for sentence in text.split("."))).strip()
         text = re.sub(r"\.", f" {EOS_TOKEN}", text)
-        text = re.sub(r"\?", f" {QM_TOKEN}", text)
-        text = IMDBTokenizer._standardise(text)
         return text.split()
 
 
