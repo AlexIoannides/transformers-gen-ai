@@ -23,6 +23,7 @@ notebooks
 └── 3_text_generation_with_transformers.ipynb
 └── 4_text_generation_with_transformers_and_bpe.ipynb
 └── 5_transformers_for_search.ipynb
+└── 6_transformers_for_sentiment_analysis.ipynb
 ```
 
 ## Installing
