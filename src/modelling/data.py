@@ -140,8 +140,8 @@ class FilmReviewSentiment(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[str, int]:
         return (
-            tensor(self._tokenized_reviews[idx][:self._chunk_size]),
-            tensor([self._review_sentiment[idx]], dtype=float32)
+            tensor(self._tokenized_reviews[idx][: self._chunk_size]),
+            tensor([self._review_sentiment[idx]], dtype=float32),
         )
 
     def __iter__(self) -> Iterable[tuple[Tensor, Tensor]]:
@@ -248,7 +248,7 @@ class IMDBTokenizer(_Tokenizer):
         text = re.sub(r"(\!|\?)", ".", text)
         text = re.sub(r"-", " ", text)
         text = "".join(
-            char for char in text if char not in "\"#$%&\'()*+,/:;<=>@[\\]^_`{|}~"
+            char for char in text if char not in "\"#$%&'()*+,/:;<=>@[\\]^_`{|}~"
         )
         text = re.sub(r"\.+", ".", text)
         return text

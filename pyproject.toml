@@ -26,6 +26,7 @@ dev = [
     "nbqa==1.7.0",
     "pytype==2023.4.27",
     "ruff==0.0.277",
+    "pytest==7.4.0",
 ]
 
 [project.urls]
