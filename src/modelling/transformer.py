@@ -223,7 +223,7 @@ def train(
 
     print("\nbest model:")
     print(f"|-- epoch: {best_checkpoint.epoch}")
-    print(f"|-- loss: {best_checkpoint.val_loss:.4f}")
+    print(f"|-- validation loss: {best_checkpoint.val_loss:.4f}")
     model.load_state_dict(best_checkpoint.state_dict)
 
     return train_losses, val_losses, best_checkpoint
