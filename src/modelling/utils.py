@@ -23,6 +23,11 @@ class ModelCheckpoint(NamedTuple):
     state_dict: Dict[str, Any]
 
 
+def count_params(model: Module) -> int:
+    """Count the number of model parameters."""
+    return sum(len(p) for p in model.parameters())
+
+
 def get_best_device() -> device:
     """Return the best device available on the machine."""
     if mps.is_available():
@@ -95,12 +100,12 @@ def _early_stop(train_loss: Dict[int, float], epoch_window: int = 3) -> bool:
 
 def _sample_decoding(logits: Tensor, temperature: float = 1.0) -> Tensor:
     """Generate next token using sample decoding strategy."""
-    return Categorical(logits=temperature * logits.squeeze()).sample()
+    return Categorical(logits=logits.squeeze() / temperature).sample()
 
 
 def _top_k_decoding(logits: Tensor, temperature: float = 1.0, k: int = 3) -> Tensor:
     """Generate next token using top-k decoding strategy."""
-    token_probs = Categorical(logits=temperature * logits.squeeze()).probs
+    token_probs = Categorical(logits=logits.squeeze() / temperature).probs
     top_k_tokens = topk(token_probs, k=k)
     sampled_token = Categorical(probs=top_k_tokens.values).sample()
     return top_k_tokens.indices[sampled_token]
@@ -108,7 +113,7 @@ def _top_k_decoding(logits: Tensor, temperature: float = 1.0, k: int = 3) -> Ten
 
 def _greedy_decoding(logits: Tensor, temperature: float = 1.0) -> Tensor:
     """Generate next token using greedy decoding strategy."""
-    token_probs = Categorical(logits=temperature * logits.squeeze()).probs
+    token_probs = Categorical(logits=logits.squeeze() / temperature).probs
     return argmax(token_probs)
 
 
@@ -129,7 +134,6 @@ def decode(
             return _sample_decoding(token_logits, temperature)
 
 
-
 def _capitalise_sentences(text: str, sentence_delimiter: str = ". ") -> str:
     """Capitalise the first letter of sentences in text passage."""
     sentences = text.split(sentence_delimiter)
@@ -142,5 +146,11 @@ def format_generated_words(text: str, prompt: str) -> str:
     text = re.sub(r" i ", " I ", text)
     text = _capitalise_sentences(text, sentence_delimiter=". ")
     text = text if text[0] == "I" else text[:1].lower() + text[1:]
-    text = "==> " + prompt.upper() + " " + text + "..."
+    text = "==> " + prompt.upper().strip() + " " + text.strip() + "..."
     return "\n".join([line for line in wrap(text, width=89)])
+
+
+def print_wrapped(text: str, width: int = 89) -> None:
+    """Print text with word wrapping."""
+    wrapped_text = "\n".join(wrap(text, width=width))
+    print(wrapped_text)
