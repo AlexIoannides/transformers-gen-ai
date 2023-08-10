@@ -22,7 +22,7 @@ notebooks
 ├── 2_text_generation_with_rnns.ipynb
 └── 3_text_generation_with_transformers.ipynb
 └── 4_pre_trained_transformers_for_search.ipynb
-└── 5_pre-trained_transformers_for_sentiment_analysis.ipynb
+└── 5_pre_trained_transformers_for_sentiment_analysis.ipynb
 ```
 
 ## Installing
