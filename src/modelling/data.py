@@ -1,13 +1,13 @@
 """Downloading and pre-processing IMDB film review data."""
 from __future__ import annotations
 
+import json
 import math
 import re
 import warnings
 from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
 from pathlib import Path
-from random import randint
 from typing import Iterable, Literal, NamedTuple
 
 from pandas import DataFrame, concat
@@ -19,7 +19,7 @@ from tokenizers.processors import ByteLevel as ByteLevelPost
 from tokenizers.trainers import BpeTrainer
 from torch import Tensor, float32, tensor
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import Dataset
+from torch.utils.data import IterableDataset
 from torchtext.datasets import IMDB
 from torchtext.vocab import vocab
 from unidecode import unidecode
@@ -50,37 +50,32 @@ def get_data() -> DataFrame:
     return all_data.sample(all_data.shape[0], random_state=42, ignore_index=True)
 
 
-class FilmReviewSequences(Dataset):
-    """IMDB film reviews training generative models."""
+class FilmReviewSequences(IterableDataset):
+    """IMDB film reviews for training generative models."""
 
     def __init__(
         self,
         tokenized_reviews: list[list[int]],
         seq_len: int = 40,
-        rnd_chunks: bool = False,
+        tag: str = "data",
     ):
-        self._tokenized_reviews = tokenized_reviews
+        self._n_reviews = len(tokenized_reviews)
         self._chunk_size = seq_len + 1
-        self._rnd_chunks = rnd_chunks
+        self._data_file_path = TORCH_DATA_STORAGE_PATH / f"imdb_sequences_{tag}.json"
+
+        with open(self._data_file_path, mode="w", ) as file:
+            for tok_seq in tokenized_reviews:
+                file.write(json.dumps(tok_seq) + "\n")
 
     def __len__(self) -> int:
-        return len(self._tokenized_reviews) - self._chunk_size
-
-    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
-        review = self._tokenized_reviews[idx]
-
-        if self._rnd_chunks:
-            chunk_start = randint(0, max(0, len(review) - self._chunk_size))
-        else:
-            chunk_start = 0
-        chunk_end = chunk_start + self._chunk_size
-
-        tokenized_chunk = review[chunk_start:chunk_end]
-        return (tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
+        return self._n_reviews
 
     def __iter__(self) -> Iterable[tuple[Tensor, Tensor]]:
-        for n in range(len(self)):
-            yield self[n]
+        with open(self._data_file_path) as file:
+            for line in file:
+                review = json.loads(line)
+                tokenized_chunk = review[:self._chunk_size]
+                yield (tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
 
 
 class SequenceDatasets(NamedTuple):
@@ -113,14 +108,14 @@ def make_sequence_datasets(
     n_train = math.floor(n_reviews * (1 - train_test_split))
     n_val = math.floor(n_train * train_val_split)
 
-    train_ds = FilmReviewSequences(reviews_tok[n_val:n_train], seq_len, rnd_chunks=True)
-    val_ds = FilmReviewSequences(reviews_tok[:n_val], seq_len, rnd_chunks=False)
-    test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len, rnd_chunks=True)
+    train_ds = FilmReviewSequences(reviews_tok[n_val:n_train], seq_len, "train")
+    val_ds = FilmReviewSequences(reviews_tok[:n_val], seq_len, "validation")
+    test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len, "test")
 
     return SequenceDatasets(train_ds, test_ds, val_ds, tokenizer)
 
 
-class FilmReviewSentiment(Dataset):
+class FilmReviewSentiment(IterableDataset):
     """IMDB film reviews and associated sentiment."""
 
     def __init__(
@@ -128,25 +123,34 @@ class FilmReviewSentiment(Dataset):
         tokenized_reviews: list[list[int]],
         review_sentiment: list[int],
         seq_len: int = 40,
+        tag: str = "data",
     ):
         if len(tokenized_reviews) != len(review_sentiment):
             raise ValueError("len(tokenized_reviews) != len(review_sentiment)")
-        self._tokenized_reviews = tokenized_reviews
-        self._review_sentiment = review_sentiment
+
+        self._n_reviews = len(tokenized_reviews)
         self._chunk_size = seq_len
+        self._data_file_path = TORCH_DATA_STORAGE_PATH / f"imdb_sentiment_{tag}.json"
+
+        with open(self._data_file_path, mode="w", ) as file:
+            for tok_seq, sentiment in zip(tokenized_reviews, review_sentiment):
+                row = {"tok_seq": tok_seq, "sentiment": sentiment}
+                file.write(json.dumps(row) + "\n")
 
     def __len__(self) -> int:
-        return len(self._tokenized_reviews)
-
-    def __getitem__(self, idx: int) -> tuple[str, int]:
-        return (
-            tensor(self._tokenized_reviews[idx][: self._chunk_size]),
-            tensor([self._review_sentiment[idx]], dtype=float32),
-        )
+        return self._n_reviews
 
     def __iter__(self) -> Iterable[tuple[Tensor, Tensor]]:
-        for n in range(len(self)):
-            yield self[n]
+        with open(self._data_file_path) as file:
+            for line in file:
+                row = json.loads(line)
+                tokenized_review = row["tok_seq"]
+                sentiment = row["sentiment"]
+                tokenized_chunk = tokenized_review[:self._chunk_size]
+                yield (
+                    tensor(tokenized_chunk),
+                    tensor([sentiment], dtype=float32),
+                )
 
 
 class SentimentDatasets(NamedTuple):
@@ -182,11 +186,14 @@ def make_sentiment_datasets(
     n_val = math.floor(n_train * train_val_split)
 
     train_ds = FilmReviewSentiment(
-        reviews_tok[n_val:n_train], sentiment[n_val:n_train], seq_len
+        reviews_tok[n_val:n_train], sentiment[n_val:n_train], seq_len, "train"
     )
-    val_ds = FilmReviewSentiment(reviews_tok[:n_val], sentiment[:n_val], seq_len)
-    test_ds = FilmReviewSentiment(reviews_tok[n_train:], sentiment[n_train:], seq_len)
-
+    val_ds = FilmReviewSentiment(
+        reviews_tok[:n_val], sentiment[:n_val], seq_len, "validation"
+    )
+    test_ds = FilmReviewSentiment(
+        reviews_tok[n_train:], sentiment[n_train:], seq_len, "test"
+    )
     return SentimentDatasets(train_ds, test_ds, val_ds, tokenizer)
 
 
@@ -264,7 +271,7 @@ class IMDBTokenizer(_Tokenizer):
 
 
 class GPTTokenizer(_Tokenizer):
-    """Implementation of GPT's tokenizer based on Bytpe Pair Encoding (BPE)."""
+    """Implementation of GPT's tokenizer based on Byte Pair Encoding (BPE)."""
 
     def __init__(self, reviews: list[str], min_freq: int = 2) -> None:
         tokenizer = Tokenizer(BPE(unk_token="[UNK]"))
