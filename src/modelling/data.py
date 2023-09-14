@@ -7,6 +7,7 @@ import re
 import warnings
 from abc import ABC, abstractmethod
 from collections import Counter, OrderedDict
+from itertools import pairwise
 from pathlib import Path
 from typing import Iterable, Literal, NamedTuple
 
@@ -56,19 +57,35 @@ class FilmReviewSequences(IterableDataset):
     def __init__(
         self,
         tokenized_reviews: list[list[int]],
-        seq_len: int = 40,
+        max_seq_len: int = 40,
+        min_seq_length: int = 20,
+        chunk_eos_token: int | None = None,
+        chunk_overlap: bool = True,
         tag: str = "data",
     ):
-        self._n_reviews = len(tokenized_reviews)
-        self._chunk_size = seq_len + 1
+        self._chunk_size = max_seq_len + 1
         self._data_file_path = TORCH_DATA_STORAGE_PATH / f"imdb_sequences_{tag}.json"
 
         with open(self._data_file_path, mode="w", ) as file:
-            for tok_seq in tokenized_reviews:
-                file.write(json.dumps(tok_seq) + "\n")
+            if chunk_eos_token:
+                for tok_seq in tokenized_reviews:
+                    chunks_itr = self.make_chunks(
+                        tok_seq,
+                        chunk_eos_token,
+                        min_seq_length,
+                        max_seq_len,
+                        chunk_overlap
+                    )
+                    for chunk in chunks_itr:
+                        file.write(json.dumps(chunk) + "\n")
+            else:
+                for tok_seq in tokenized_reviews:
+                    file.write(json.dumps(tok_seq) + "\n")
 
     def __len__(self) -> int:
-        return self._n_reviews
+        with open(self._data_file_path) as file:
+            num_chunks = sum(1 for line in file)
+        return num_chunks
 
     def __iter__(self) -> Iterable[tuple[Tensor, Tensor]]:
         with open(self._data_file_path) as file:
@@ -76,6 +93,46 @@ class FilmReviewSequences(IterableDataset):
                 review = json.loads(line)
                 tokenized_chunk = review[:self._chunk_size]
                 yield (tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
+
+    @staticmethod
+    def make_chunks(
+        tokenized_text: list[int],
+        eos_token: int,
+        min_chunk_size: int = 20,
+        max_chunk_size: int = 40,
+        overlapping: bool = True
+    ) -> Iterable[list[int]]:
+        """Split tokenised text into chunks of complete sentences."""
+        sentence_start_indices = (
+            [0] + [i+1 for i, token in enumerate(tokenized_text) if token == eos_token]
+        )
+        tokenized_sentences = [
+            tokenized_text[i:j] for i, j in pairwise(sentence_start_indices)
+        ]
+        if overlapping:
+            for i in range(len(tokenized_sentences)):
+                chunk: list[int] = []
+                for tok_sentence in tokenized_sentences[i:]:
+                    if len(chunk + tok_sentence) <= max_chunk_size:
+                        chunk += tok_sentence
+                    else:
+                        break
+                if len(chunk) >= min_chunk_size:
+                    yield chunk
+        else:
+            sentence_idx = 0
+            while sentence_idx < len(tokenized_sentences):
+                chunk: list[int] = []
+                for tok_sentence in tokenized_sentences[sentence_idx:]:
+                    if len(tok_sentence) > max_chunk_size:
+                        sentence_idx += 1
+                        break
+                    if len(chunk + tok_sentence) <= max_chunk_size:
+                        chunk += tok_sentence
+                        sentence_idx += 1
+                    else:
+                        break
+                yield chunk
 
 
 class SequenceDatasets(NamedTuple):
@@ -103,14 +160,21 @@ def make_sequence_datasets(
         tokenizer = IMDBTokenizer(reviews, min_freq)
 
     reviews_tok = [tokenizer(review) for review in reviews]
+    eos_tok = tokenizer(".")[0]
 
     n_reviews = len(reviews_tok)
     n_train = math.floor(n_reviews * (1 - train_test_split))
     n_val = math.floor(n_train * train_val_split)
 
-    train_ds = FilmReviewSequences(reviews_tok[n_val:n_train], seq_len, "train")
-    val_ds = FilmReviewSequences(reviews_tok[:n_val], seq_len, "validation")
-    test_ds = FilmReviewSequences(reviews_tok[n_train:], seq_len, "test")
+    train_ds = FilmReviewSequences(
+        reviews_tok[n_val:n_train], seq_len, chunk_eos_token=eos_tok, tag="train"
+    )
+    val_ds = FilmReviewSequences(
+        reviews_tok[:n_val], seq_len, chunk_eos_token=eos_tok, tag="validation"
+    )
+    test_ds = FilmReviewSequences(
+        reviews_tok[n_train:], seq_len, chunk_eos_token=eos_tok, tag="test"
+    )
 
     return SequenceDatasets(train_ds, test_ds, val_ds, tokenizer)
 
@@ -128,7 +192,6 @@ class FilmReviewSentiment(IterableDataset):
         if len(tokenized_reviews) != len(review_sentiment):
             raise ValueError("len(tokenized_reviews) != len(review_sentiment)")
 
-        self._n_reviews = len(tokenized_reviews)
         self._chunk_size = seq_len
         self._data_file_path = TORCH_DATA_STORAGE_PATH / f"imdb_sentiment_{tag}.json"
 
@@ -138,7 +201,9 @@ class FilmReviewSentiment(IterableDataset):
                 file.write(json.dumps(row) + "\n")
 
     def __len__(self) -> int:
-        return self._n_reviews
+        with open(self._data_file_path) as file:
+            num_rows = sum(1 for line in file)
+        return num_rows
 
     def __iter__(self) -> Iterable[tuple[Tensor, Tensor]]:
         with open(self._data_file_path) as file:
