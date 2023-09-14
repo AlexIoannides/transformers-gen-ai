@@ -56,7 +56,7 @@ class FilmReviewSequences(IterableDataset):
 
     def __init__(
         self,
-        tokenized_reviews: list[list[int]],
+        tokenized_reviews: Iterable[list[int]],
         max_seq_len: int = 40,
         min_seq_length: int = 20,
         chunk_eos_token: int | None = None,
@@ -184,12 +184,14 @@ class FilmReviewSentiment(IterableDataset):
 
     def __init__(
         self,
-        tokenized_reviews: list[list[int]],
-        review_sentiment: list[int],
+        tokenized_reviews: Iterable[list[int]],
+        review_sentiment: Iterable[int],
         seq_len: int = 40,
         tag: str = "data",
     ):
-        if len(tokenized_reviews) != len(review_sentiment):
+        try:
+            max(0 for _ in zip(tokenized_reviews, review_sentiment, strict=True))
+        except ValueError:
             raise ValueError("len(tokenized_reviews) != len(review_sentiment)")
 
         self._chunk_size = seq_len
