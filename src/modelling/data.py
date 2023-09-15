@@ -148,16 +148,18 @@ def make_sequence_datasets(
     train_test_split: float = 0.1,
     train_val_split: float = 0.05,
     tokenizer_type: Literal["IMDBTokenizer", "GPTTokenizer"] = "IMDBTokenizer",
-    seq_len: int = 40,
-    min_freq: int = 2,
+    min_tok_freq: int = 2,
+    max_seq_len: int = 40,
+    min_seq_len: int = 20,
+    chunk_overlap: bool = True,
 ) -> SequenceDatasets:
     """Make train, validation and test datasets."""
     reviews = get_data()["review"].tolist()
 
     if tokenizer_type == "GPTTokenizer":
-        tokenizer = GPTTokenizer(reviews, min_freq)
+        tokenizer = GPTTokenizer(reviews, min_tok_freq)
     else:
-        tokenizer = IMDBTokenizer(reviews, min_freq)
+        tokenizer = IMDBTokenizer(reviews, min_tok_freq)
 
     reviews_tok = [tokenizer(review) for review in reviews]
     eos_tok = tokenizer(".")[0]
@@ -167,13 +169,28 @@ def make_sequence_datasets(
     n_val = math.floor(n_train * train_val_split)
 
     train_ds = FilmReviewSequences(
-        reviews_tok[n_val:n_train], seq_len, chunk_eos_token=eos_tok, tag="train"
+        reviews_tok[n_val:n_train],
+        max_seq_len,
+        min_seq_len,
+        chunk_eos_token=eos_tok,
+        chunk_overlap=chunk_overlap,
+        tag="train"
     )
     val_ds = FilmReviewSequences(
-        reviews_tok[:n_val], seq_len, chunk_eos_token=eos_tok, tag="validation"
+        reviews_tok[:n_val],
+        max_seq_len,
+        min_seq_len,
+        chunk_eos_token=eos_tok,
+        chunk_overlap=chunk_overlap,
+        tag="validation"
     )
     test_ds = FilmReviewSequences(
-        reviews_tok[n_train:], seq_len, chunk_eos_token=eos_tok, tag="test"
+        reviews_tok[n_train:],
+        max_seq_len,
+        max_seq_len,
+        chunk_eos_token=eos_tok,
+        chunk_overlap=chunk_overlap,
+        tag="test"
     )
 
     return SequenceDatasets(train_ds, test_ds, val_ds, tokenizer)
@@ -233,8 +250,8 @@ def make_sentiment_datasets(
     train_test_split: float = 0.1,
     train_val_split: float = 0.05,
     tokenizer_type: Literal["IMDBTokenizer", "GPTTokenizer"] = "IMDBTokenizer",
-    seq_len: int = 40,
-    min_freq: int = 2,
+    min_tok_freq: int = 2,
+    max_seq_len: int = 40,
 ) -> SentimentDatasets:
     """Make train, validation and test datasets."""
     data = get_data()
@@ -242,9 +259,9 @@ def make_sentiment_datasets(
     sentiment = data["sentiment"].tolist()
 
     if tokenizer_type == "GPTTokenizer":
-        tokenizer = GPTTokenizer(reviews, min_freq)
+        tokenizer = GPTTokenizer(reviews, min_tok_freq)
     else:
-        tokenizer = IMDBTokenizer(reviews, min_freq)
+        tokenizer = IMDBTokenizer(reviews, min_tok_freq)
 
     reviews_tok = [tokenizer(review) for review in reviews]
 
@@ -253,13 +270,13 @@ def make_sentiment_datasets(
     n_val = math.floor(n_train * train_val_split)
 
     train_ds = FilmReviewSentiment(
-        reviews_tok[n_val:n_train], sentiment[n_val:n_train], seq_len, "train"
+        reviews_tok[n_val:n_train], sentiment[n_val:n_train], max_seq_len, "train"
     )
     val_ds = FilmReviewSentiment(
-        reviews_tok[:n_val], sentiment[:n_val], seq_len, "validation"
+        reviews_tok[:n_val], sentiment[:n_val], max_seq_len, "validation"
     )
     test_ds = FilmReviewSentiment(
-        reviews_tok[n_train:], sentiment[n_train:], seq_len, "test"
+        reviews_tok[n_train:], sentiment[n_train:], max_seq_len, "test"
     )
     return SentimentDatasets(train_ds, test_ds, val_ds, tokenizer)
 
