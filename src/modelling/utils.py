@@ -7,7 +7,7 @@ from typing import Any, Dict, Literal, NamedTuple
 
 from pandas import DataFrame
 from seaborn import lineplot
-from torch import Tensor, argmax, device, load, save, topk
+from torch import Tensor, argmax, cuda, device, load, save, topk
 from torch.backends import mps
 from torch.distributions import Categorical
 from torch.nn import Module
@@ -28,12 +28,24 @@ def count_params(model: Module) -> int:
     return sum(len(p) for p in model.parameters())
 
 
-def get_best_device() -> device:
+def get_best_device(
+        cuda_priority: Literal[1, 2, 3] = 1,
+        mps_priority: Literal[1, 2, 3] = 2,
+        cpu_priority: Literal[1, 2, 3] = 3,
+    ) -> device:
     """Return the best device available on the machine."""
-    if mps.is_available():
-        return device("mps")
-    else:
-        return device("cpu")
+    device_priorities = sorted(
+        (("cuda", cuda_priority), ("mps", mps_priority), ("cpu", cpu_priority)),
+        key=lambda e: e[1]
+    )
+    for device_type, _ in device_priorities:
+        if device_type == "cuda" and cuda.is_available():
+            return device("cuda")
+        elif device_type == "mps" and mps.is_available():
+            return device("mps")
+        elif device_type == "cpu":
+            return device("cpu")
+    
 
 
 def save_model(model: Module, name: str, loss: float) -> None:
