@@ -58,7 +58,7 @@ class FilmReviewSequences(IterableDataset):
         self,
         tokenized_reviews: Iterable[list[int]],
         max_seq_len: int = 40,
-        min_seq_length: int = 20,
+        min_seq_len: int = 20,
         chunk_eos_token: int | None = None,
         chunk_overlap: bool = True,
         tag: str = "data",
@@ -72,7 +72,7 @@ class FilmReviewSequences(IterableDataset):
                     chunks_itr = self.make_chunks(
                         tok_seq,
                         chunk_eos_token,
-                        min_seq_length,
+                        min_seq_len,
                         max_seq_len,
                         chunk_overlap
                     )
