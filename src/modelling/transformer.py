@@ -171,7 +171,7 @@ def train(
     warmup_epochs: float = 0.5,
     clip_grads: float | None = None,
     random_seed: int = 42,
-    device: device = get_best_device(),
+    device: device = get_best_device(cuda_priority=1, mps_priority=3, cpu_priority=2),
 ) -> tuple[dict[int, float], dict[int, float], ModelCheckpoint]:
     """Training loop for transformer decoder."""
     manual_seed(random_seed)

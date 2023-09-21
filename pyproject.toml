@@ -1,6 +1,6 @@
 [project]
 name = "modelling"
-version = "0.4.0"
+version = "0.5.0"
 authors = [
   { name="Alex Ioannides", email="alex@bodyworkml.com" },
 ]
@@ -27,6 +27,7 @@ dev = [
     "nbqa==1.7.0",
     "pytype==2023.4.27",
     "ruff==0.0.277",
+    "pytest==7.4.0",
 ]
 
 [project.urls]
