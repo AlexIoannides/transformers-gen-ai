@@ -223,7 +223,7 @@ class FilmReviewSentiment(IterableDataset):
                         tok_chunks_iter = make_chunks(
                             tok_review, chunk_eos_token, max_seq_len, min_seq_len, True
                         )
-                        tok_chunk = next(tok_chunks_iter)
+                        tok_chunk = next(iter(tok_chunks_iter))
                         row = {"tok_chunk": tok_chunk, "sentiment": sentiment}
                         file.write(json.dumps(row) + "\n")
                     except StopIteration:
