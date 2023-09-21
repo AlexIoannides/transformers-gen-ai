@@ -51,6 +51,49 @@ def get_data() -> DataFrame:
     return all_data.sample(all_data.shape[0], random_state=42, ignore_index=True)
 
 
+def make_chunks(
+    tokenized_text: list[int],
+    eos_token: int,
+    max_chunk_size: int = 40,
+    min_chunk_size: int = 20,
+    overlapping: bool = True
+) -> Iterable[list[int]]:
+    """Split tokenised text into chunks of complete sentences."""
+    if min_chunk_size >= max_chunk_size:
+        msg = f"min_chunk_size >= max_chunk_size ({min_chunk_size} >= {max_chunk_size})"
+        raise ValueError(msg)
+    sentence_start_indices = (
+        [0] + [i+1 for i, token in enumerate(tokenized_text) if token == eos_token]
+    )
+    tokenized_sentences = [
+        tokenized_text[i:j] for i, j in pairwise(sentence_start_indices)
+    ]
+    if overlapping:
+        for i in range(len(tokenized_sentences)):
+            chunk: list[int] = []
+            for tok_sentence in tokenized_sentences[i:]:
+                if len(chunk + tok_sentence) <= max_chunk_size:
+                    chunk += tok_sentence
+                else:
+                    break
+            if len(chunk) >= min_chunk_size:
+                yield chunk
+    else:
+        sentence_idx = 0
+        while sentence_idx < len(tokenized_sentences):
+            chunk: list[int] = []
+            for tok_sentence in tokenized_sentences[sentence_idx:]:
+                if len(tok_sentence) > max_chunk_size:
+                    sentence_idx += 1
+                    break
+                if len(chunk + tok_sentence) <= max_chunk_size:
+                    chunk += tok_sentence
+                    sentence_idx += 1
+                else:
+                    break
+            yield chunk
+
+
 class FilmReviewSequences(IterableDataset):
     """IMDB film reviews for training generative models."""
 
@@ -63,24 +106,23 @@ class FilmReviewSequences(IterableDataset):
         chunk_overlap: bool = True,
         tag: str = "data",
     ):
-        self._chunk_size = max_seq_len + 1
         self._data_file_path = TORCH_DATA_STORAGE_PATH / f"imdb_sequences_{tag}.json"
 
-        with open(self._data_file_path, mode="w", ) as file:
+        with open(self._data_file_path, mode="w") as file:
             if chunk_eos_token:
-                for tok_seq in tokenized_reviews:
-                    chunks_itr = self.make_chunks(
-                        tok_seq,
+                for tok_review in tokenized_reviews:
+                    tok_chunks_itr = make_chunks(
+                        tok_review,
                         chunk_eos_token,
-                        min_seq_len,
                         max_seq_len,
+                        min_seq_len,
                         chunk_overlap
                     )
-                    for chunk in chunks_itr:
-                        file.write(json.dumps(chunk) + "\n")
+                    for tok_chunk in tok_chunks_itr:
+                        file.write(json.dumps(tok_chunk) + "\n")
             else:
-                for tok_seq in tokenized_reviews:
-                    file.write(json.dumps(tok_seq) + "\n")
+                for tok_review in tokenized_reviews:
+                    file.write(json.dumps(tok_review[:max_seq_len]) + "\n")
 
     def __len__(self) -> int:
         with open(self._data_file_path) as file:
@@ -90,49 +132,8 @@ class FilmReviewSequences(IterableDataset):
     def __iter__(self) -> Iterable[tuple[Tensor, Tensor]]:
         with open(self._data_file_path) as file:
             for line in file:
-                review = json.loads(line)
-                tokenized_chunk = review[:self._chunk_size]
+                tokenized_chunk = json.loads(line)
                 yield (tensor(tokenized_chunk[:-1]), tensor(tokenized_chunk[1:]))
-
-    @staticmethod
-    def make_chunks(
-        tokenized_text: list[int],
-        eos_token: int,
-        min_chunk_size: int = 20,
-        max_chunk_size: int = 40,
-        overlapping: bool = True
-    ) -> Iterable[list[int]]:
-        """Split tokenised text into chunks of complete sentences."""
-        sentence_start_indices = (
-            [0] + [i+1 for i, token in enumerate(tokenized_text) if token == eos_token]
-        )
-        tokenized_sentences = [
-            tokenized_text[i:j] for i, j in pairwise(sentence_start_indices)
-        ]
-        if overlapping:
-            for i in range(len(tokenized_sentences)):
-                chunk: list[int] = []
-                for tok_sentence in tokenized_sentences[i:]:
-                    if len(chunk + tok_sentence) <= max_chunk_size:
-                        chunk += tok_sentence
-                    else:
-                        break
-                if len(chunk) >= min_chunk_size:
-                    yield chunk
-        else:
-            sentence_idx = 0
-            while sentence_idx < len(tokenized_sentences):
-                chunk: list[int] = []
-                for tok_sentence in tokenized_sentences[sentence_idx:]:
-                    if len(tok_sentence) > max_chunk_size:
-                        sentence_idx += 1
-                        break
-                    if len(chunk + tok_sentence) <= max_chunk_size:
-                        chunk += tok_sentence
-                        sentence_idx += 1
-                    else:
-                        break
-                yield chunk
 
 
 class SequenceDatasets(NamedTuple):
@@ -187,7 +188,7 @@ def make_sequence_datasets(
     test_ds = FilmReviewSequences(
         reviews_tok[n_train:],
         max_seq_len,
-        max_seq_len,
+        min_seq_len,
         chunk_eos_token=eos_tok,
         chunk_overlap=chunk_overlap,
         tag="test"
@@ -203,7 +204,9 @@ class FilmReviewSentiment(IterableDataset):
         self,
         tokenized_reviews: Iterable[list[int]],
         review_sentiment: Iterable[int],
-        seq_len: int = 40,
+        max_seq_len: int = 40,
+        min_seq_len: int = 20,
+        chunk_eos_token: int | None = None,
         tag: str = "data",
     ):
         try:
@@ -211,13 +214,24 @@ class FilmReviewSentiment(IterableDataset):
         except ValueError:
             raise ValueError("len(tokenized_reviews) != len(review_sentiment)")
 
-        self._chunk_size = seq_len
         self._data_file_path = TORCH_DATA_STORAGE_PATH / f"imdb_sentiment_{tag}.json"
 
-        with open(self._data_file_path, mode="w", ) as file:
-            for tok_seq, sentiment in zip(tokenized_reviews, review_sentiment):
-                row = {"tok_seq": tok_seq, "sentiment": sentiment}
-                file.write(json.dumps(row) + "\n")
+        with open(self._data_file_path, mode="w") as file:
+            if chunk_eos_token:
+                for tok_review, sentiment in zip(tokenized_reviews, review_sentiment):
+                    try:
+                        tok_chunks_iter = make_chunks(
+                            tok_review, chunk_eos_token, max_seq_len, min_seq_len, True
+                        )
+                        tok_chunk = next(tok_chunks_iter)
+                        row = {"tok_chunk": tok_chunk, "sentiment": sentiment}
+                        file.write(json.dumps(row) + "\n")
+                    except StopIteration:
+                        continue
+            else:
+                for tok_review, sentiment in zip(tokenized_reviews, review_sentiment):
+                    row = {"tok_chunk": tok_review[:max_seq_len], "sentiment": sentiment}
+                    file.write(json.dumps(row) + "\n")
 
     def __len__(self) -> int:
         with open(self._data_file_path) as file:
@@ -228,9 +242,8 @@ class FilmReviewSentiment(IterableDataset):
         with open(self._data_file_path) as file:
             for line in file:
                 row = json.loads(line)
-                tokenized_review = row["tok_seq"]
+                tokenized_chunk = row["tok_chunk"]
                 sentiment = row["sentiment"]
-                tokenized_chunk = tokenized_review[:self._chunk_size]
                 yield (
                     tensor(tokenized_chunk),
                     tensor([sentiment], dtype=float32),
@@ -252,6 +265,7 @@ def make_sentiment_datasets(
     tokenizer_type: Literal["IMDBTokenizer", "GPTTokenizer"] = "IMDBTokenizer",
     min_tok_freq: int = 2,
     max_seq_len: int = 40,
+    min_seq_len: int = 20,
 ) -> SentimentDatasets:
     """Make train, validation and test datasets."""
     data = get_data()
@@ -264,20 +278,37 @@ def make_sentiment_datasets(
         tokenizer = IMDBTokenizer(reviews, min_tok_freq)
 
     reviews_tok = [tokenizer(review) for review in reviews]
+    eos_token = tokenizer(".")[0]
 
     n_reviews = len(reviews_tok)
     n_train = math.floor(n_reviews * (1 - train_test_split))
     n_val = math.floor(n_train * train_val_split)
 
     train_ds = FilmReviewSentiment(
-        reviews_tok[n_val:n_train], sentiment[n_val:n_train], max_seq_len, "train"
+        reviews_tok[n_val:n_train],
+        sentiment[n_val:n_train],
+        max_seq_len,
+        min_seq_len,
+        eos_token,
+        tag="train"
     )
     val_ds = FilmReviewSentiment(
-        reviews_tok[:n_val], sentiment[:n_val], max_seq_len, "validation"
+        reviews_tok[:n_val],
+        sentiment[:n_val],
+        max_seq_len,
+        min_seq_len,
+        eos_token,
+        tag="validation"
     )
     test_ds = FilmReviewSentiment(
-        reviews_tok[n_train:], sentiment[n_train:], max_seq_len, "test"
+        reviews_tok[n_train:],
+        sentiment[n_train:],
+        max_seq_len,
+        min_seq_len,
+        eos_token,
+        tag="test"
     )
+
     return SentimentDatasets(train_ds, test_ds, val_ds, tokenizer)
 
 
