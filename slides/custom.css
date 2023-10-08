@@ -1,0 +1,6 @@
+/* Increase font size for code blocks */
+.reveal pre code {
+    font-size: 12px;
+    line-height: 0.75;
+    max-height: 500px;
+}
