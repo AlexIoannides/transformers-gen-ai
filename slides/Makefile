@@ -1,6 +1,7 @@
 build-presentation: 
-	pandoc -t revealjs transformers-and-llms.md -s -o transformers-and-llms.html \
+	pandoc -t revealjs presentation.md -s -o presentation.html \
 		--highlight-style=breezedark \
+		--mathjax \
 		--css=custom.css \
 		--slide-level=3 \
-		--variable theme=solarized 
+		--variable theme=solarized
