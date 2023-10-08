@@ -12,7 +12,7 @@ date: October 12th, 2023
 
 ::: incremental
 
-1. The problem(s) we're trying to solve.
+1. The problem we're trying to solve.
 2. How to compute multi-head attention.
 3. Transformers: encoders, decoders, and all that.
 4. How I developed a generative LLM.
@@ -21,11 +21,19 @@ date: October 12th, 2023
 
 :::
 
+## The problem we're trying to solve
+
 ---
 
-<!-- A nice schematic of words to tokens, to embeddings, to context-aware embeddings. -->
+![](images/paradigm.png)
 
 ## How to compute multi-head attention
+
+---
+
+![](images/attention.png)
+
+### TODO
 
 <!-- step-through notebook code -->
 
