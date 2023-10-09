@@ -500,13 +500,675 @@ Models were trained using one of:
 - Apple M1 Max
 - AWS `p3.xlarge` EC2 instance with a single NVIDIA V100 Tensor Core GPU.
 
-## Benchmarking with an RNN
+## RNN benchmark model
 
-TODO
+![](images/ltsm.png)
 
-## Generative transformer-decoder
+---
 
-TODO
+Define the model:
+
+```python
+from torch import Tensor, device, manual_seed, no_grad, tensor, zeros
+from torch.nn import LSTM, CrossEntropyLoss, Embedding, Linear, Module
+from torch.optim import Adam, Optimizer
+from torch.utils.data import DataLoader
+
+
+class NextWordPredictionRNN(Module):
+    """LSTM for predicting the next token in a sequence."""
+
+    def __init__(self, size_vocab: int, size_embed: int, size_hidden: int):
+        super().__init__()
+        self._size_hidden = size_hidden
+        self._embedding = Embedding(size_vocab, size_embed)
+        self._lstm = LSTM(size_embed, size_hidden, batch_first=True)
+        self._linear = Linear(size_hidden, size_vocab)
+
+    def forward(self, x: Tensor, hidden: Tensor, cell: Tensor) -> Tensor:
+        out = self._embedding(x).unsqueeze(1)
+        out, (hidden, cell) = self._lstm(out, (hidden, cell))
+        out = self._linear(out).reshape(out.shape[0], -1)
+        return out, hidden, cell
+
+    def initialise(self, batch_size: int, device_: device) -> Tuple[Tensor, Tensor]:
+        hidden = zeros(1, batch_size, self._size_hidden, device=device_)
+        cell = zeros(1, batch_size, self._size_hidden, device=device_)
+        return hidden, cell
+```
+
+---
+
+Define the training routine:
+
+```python
+def _train_step(
+    x_batch: Tensor,
+    y_batch: Tensor,
+    model: Module,
+    loss_fn: Callable[[Tensor, Tensor], Tensor],
+    optimizer: Optimizer,
+    device: device,
+) -> Tensor:
+    """One iteration of the training loop (for one batch)."""
+    model.train()
+    batch_size, sequence_length = x_batch.shape
+
+    loss_batch = tensor(0.0, device=device)
+    optimizer.zero_grad(set_to_none=True)
+
+    hidden, cell = model.initialise(batch_size, device)
+    for n in range(sequence_length):
+        y_pred, hidden, cell = model(x_batch[:, n], hidden, cell)
+        loss_batch += loss_fn(y_pred, y_batch[:, n])
+    loss_batch.backward()
+    optimizer.step()
+
+    return loss_batch / sequence_length
+```
+
+---
+
+```python
+@no_grad()
+def _val_step(
+    x_batch: Tensor,
+    y_batch: Tensor,
+    model: Module,
+    loss_fn: Callable[[Tensor, Tensor], Tensor],
+    device: device,
+) -> Tensor:
+    """One iteration of the validation loop (for one batch)."""
+    model.eval()
+    batch_size, sequence_length = x_batch.shape
+
+    loss_batch = tensor(0.0, device=device)
+
+    hidden, cell = model.initialise(batch_size, device)
+    for n in range(sequence_length):
+        y_pred, hidden, cell = model(x_batch[:, n], hidden, cell)
+        loss_batch += loss_fn(y_pred, y_batch[:, n])
+
+    return loss_batch / sequence_length
+```
+
+---
+
+```python
+def train(
+    model: Module,
+    train_data: DataLoader,
+    val_data: DataLoader,
+    n_epochs: int,
+    learning_rate: float = 0.001,
+    random_seed: int = 42,
+    device: device = get_best_device(),
+) -> Tuple[Dict[int, float], Dict[int, float], ModelCheckpoint]:
+    """Training loop for LTSM flavoured RNNs on sequence data."""
+    manual_seed(random_seed)
+    model.to(device)
+
+    optimizer = Adam(model.parameters(), lr=learning_rate)
+    loss_fn = CrossEntropyLoss(ignore_index=PAD_TOKEN_IDX)
+
+    train_losses: Dict[int, float] = {}
+    val_losses: Dict[int, float] = {}
+
+    ...
+
+```
+
+---
+
+```python
+def train(...) -> Tuple[Dict[int, float], Dict[int, float], ModelCheckpoint]:
+    """Training loop for LTSM flavoured RNNs on sequence data."""
+
+    ...
+
+    for epoch in range(1, n_epochs + 1):
+        loss_train = tensor(0.0).to(device)
+        for i, (x_batch, y_batch) in enumerate((pbar := tqdm(train_data)), start=1):
+            x = x_batch.to(device, non_blocking=True)
+            y = y_batch.to(device, non_blocking=True)
+            loss_train += _train_step(x, y, model, loss_fn, optimizer, device)
+            pbar.set_description(f"epoch {epoch} training loss = {loss_train/i:.4f}")
+
+        loss_val = tensor(0.0).to(device)
+        for x_batch, y_batch in val_data:
+            x = x_batch.to(device, non_blocking=True)
+            y = y_batch.to(device, non_blocking=True)
+            loss_val += _val_step(x, y, model, loss_fn, device)
+
+        epoch_train_loss = loss_train.item() / len(train_data)
+        epoch_val_loss = loss_val.item() / len(val_data)
+
+        if epoch == 1 or epoch_val_loss < min(val_losses.values()):
+            best_checkpoint = ModelCheckpoint(
+                epoch, epoch_train_loss, epoch_val_loss, model.state_dict().copy()
+            )
+        train_losses[epoch] = epoch_train_loss
+        val_losses[epoch] = epoch_val_loss
+
+        if _early_stop(val_losses):
+            break
+
+    ...
+
+```
+
+---
+
+```python
+def train(...) -> Tuple[Dict[int, float], Dict[int, float], ModelCheckpoint]:
+    """Training loop for LTSM flavoured RNNs on sequence data."""
+
+    ...
+
+    print("\nbest model:")
+    print(f"|-- epoch: {best_checkpoint.epoch}")
+    print(f"|-- validation loss: {best_checkpoint.val_loss:.4f}")
+
+    model.load_state_dict(best_checkpoint.state_dict)
+    return train_losses, val_losses, best_checkpoint
+```
+
+---
+
+Train the model:
+
+```python
+# Hyper-parameters that lead to a model with 215,234 parameters.
+SIZE_EMBED = 256
+SIZE_HIDDEN = 512
+
+MAX_EPOCHS = 30
+BATCH_SIZE = 256
+MAX_SEQ_LEN = 100
+MIN_SEQ_LEN = 10
+MIN_WORD_FREQ = 2
+LEARNING_RATE = 0.005
+```
+
+---
+
+![](images/lstm_train_stats.png){width=50%}
+
+```text
+epoch 1 training loss = 5.4329: 100%|██████████| 2105/2105 [2:31:20<00:00,  4.31s/it]  
+epoch 2 training loss = 4.8774: 100%|██████████| 2105/2105 [2:30:43<00:00,  4.30s/it]  
+epoch 3 training loss = 4.6274: 100%|██████████| 2105/2105 [2:31:16<00:00,  4.31s/it]  
+epoch 4 training loss = 4.4552: 100%|██████████| 2105/2105 [2:30:40<00:00,  4.29s/it]  
+
+best model:
+|-- epoch: 2
+|-- validation loss: 5.0893
+```
+
+---
+
+### Text generation strategies
+
+```python
+def _sample_decoding(logits: Tensor, temperature: float = 1.0) -> Tensor:
+    """Generate next token using sample decoding strategy."""
+    return Categorical(logits=logits.squeeze() / temperature).sample()
+
+
+def _top_k_decoding(logits: Tensor, temperature: float = 1.0, k: int = 3) -> Tensor:
+    """Generate next token using top-k decoding strategy."""
+    token_probs = Categorical(logits=logits.squeeze() / temperature).probs
+    top_k_tokens = topk(token_probs, k=k)
+    sampled_token = Categorical(probs=top_k_tokens.values).sample()
+    return top_k_tokens.indices[sampled_token]
+
+
+def _greedy_decoding(logits: Tensor, temperature: float = 1.0) -> Tensor:
+    """Generate next token using greedy decoding strategy."""
+    token_probs = Categorical(logits=logits.squeeze() / temperature).probs
+    return argmax(token_probs)
+
+
+def decode(
+    token_logits: Tensor,
+    strategy: Literal["greedy", "sample", "topk"] = "greedy",
+    temperature: float = 1.0,
+    *,
+    k: int = 5,
+) -> Tensor:
+    """Decode generative model output using the specified strategy."""
+    match strategy:
+        case "greedy":
+            return _greedy_decoding(token_logits, temperature)
+        case "topk":
+            return _top_k_decoding(token_logits, temperature, k)
+        case "sample":
+            return _sample_decoding(token_logits, temperature)
+```
+
+### Generating text from the RNN model
+
+```python
+def generate(
+    model: NextWordPredictionRNN,
+    prompt: str,
+    tokenizer: _Tokenizer,
+    strategy: Literal["greedy", "sample", "topk"] = "greedy",
+    output_length: int = 60,
+    temperature: float = 1.0,
+    random_seed: int = 42,
+    device: device = get_best_device(),
+    *,
+    k: int = 2,
+) -> str:
+    """Generate new text conditional on a text prompt."""
+    manual_seed(random_seed)
+
+    model.to(device)
+    model.eval()
+
+    prompt_tokens = tokenizer(prompt)
+
+    # Feed tokenised prompt into model.
+    hidden, cell = model.initialise(1, device)
+    for token in prompt_tokens[:-1]:
+        x = tensor([token], device=device)
+        _, hidden, cell = model(x, hidden, cell)
+
+    # Then predict the next token, add it to the sequence, and iterate
+    token_sequence = prompt_tokens.copy()
+    for _ in range(output_length):
+        x = tensor([token_sequence[-1]], device=device)
+        token_logits, hidden, cell = model(x, hidden, cell)
+        token_pred = decode(token_logits, strategy, temperature, k=k)
+        token_sequence += [token_pred.item()]
+
+    new_token_sequence = token_sequence[len(prompt_tokens) :]
+    return format_generated_words(tokenizer.tokens2text(new_token_sequence), prompt)
+```
+
+---
+
+Start with an untrained model as a reference point:
+
+```python
+prompt = "This is a classic horror and"
+
+# ==> THIS IS A CLASSIC HORROR AND numerically unsavory aiken pyewacket nagase comparative
+# dave compounded surfboards seemsdestined chekhov interdiction prussic hunh kosugis
+# germanys sole filmsfor sedimentation albino 2036 krug zefferelli djalili baldwins chowder
+# strauss shutes haifa seeming 101st mrbumble grandmas noll bulgarias lenders repressed
+# deneuve ounce emphasise salome tracking avian mrmyagi megalopolis countries dolorous
+# fairview dying subtitle appointed dollar opting energized tremell cya slinging riot
+# seemsslow secaucus muco forgo mediation patio flogs armsin sbaraglia snowflake usurps
+# roadmovie slogans holy vanishes zuckers herrmann encyclopedia dorma chapas fairview whit
+# mergers katie motherhood ejaculation stepehn nat unremitting munched munched sceneand
+# jarhead skaal broadcasted pottery admonition lewbert upholding neat projectile bjork...
+```
+
+---
+
+Then take a look at what a top-5 decoding strategy yields with the trained model:
+
+```python
+prompt = "This is a classic horror and"
+
+# ==> THIS IS A CLASSIC HORROR AND the story is a bit of a letdown. The story is told in
+# some ways. The only redeeming feature in the whole movie is that its not a good idea. Its
+# a wonderful story with a very limited performance and the music and the script. The story
+# is not that bad. The story is not a spoiler. The story is a little slow but its not the
+# best one to come to mind of mencia. Its not a movie to watch. It is a good film to watch.
+# Its not....
+```
+
+## Generative decoder model
+
+![](images/encoder_decoder_mod.png){width=45%}
+
+### Positional encoding
+
+```python
+class PositionalEncoding(Module):
+    """Position encoder taken from 'Attention is all you Need'."""
+
+    def __init__(self, size_embed: int, dropout: float = 0.1, max_seq_len: int = 1000):
+        super().__init__()
+        self._dropout = Dropout(p=dropout)
+
+        position = arange(max_seq_len).unsqueeze(1)
+        div_term = exp(arange(0, size_embed, 2) * (-log(tensor(10000.0)) / size_embed))
+        pos_encoding = zeros(max_seq_len, size_embed)
+        pos_encoding[:, 0::2] = sin(position * div_term)
+        pos_encoding[:, 1::2] = cos(position * div_term)
+        self.register_buffer("_pos_encoding", pos_encoding)  # don't train these
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[batch_size, seq_len, embedding_dim]``
+        """
+        seq_len = x.size(1)
+        x = x + self._pos_encoding[:seq_len]
+        return self._dropout(x)
+```
+
+---
+
+Define the model:
+
+```python
+class NextWordPredictionTransformer(Module):
+    """Transformer for predicting the next tokens in a sequence."""
+
+    def __init__(self, size_vocab: int, size_embed: int, n_heads: int = 4):
+        super().__init__()
+        self._size_vocab = size_vocab
+        self._size_embed = size_embed
+        self._n_heads = n_heads
+        self._position_encoder = PositionalEncoding(size_embed)
+        self._embedding = Embedding(size_vocab, size_embed)
+        self._decoder = TransformerDecoderLayer(
+            size_embed, n_heads, dim_feedforward=2 * size_embed, batch_first=True
+        )
+        self._linear = Linear(size_embed, size_vocab)
+        self._init_weights()
+
+    def forward(self, x: Tensor) -> Tensor:
+        x_causal_mask, x_padding_mask = self._make_mask(x)
+        out = self._embedding(x) * sqrt(tensor(self._size_embed))
+        out = self._position_encoder(out)
+        out = self._decoder(
+            out,
+            out,
+            tgt_mask=x_causal_mask,
+            tgt_key_padding_mask=x_padding_mask,
+            memory_mask=x_causal_mask,
+            memory_key_padding_mask=x_padding_mask,
+        )
+        out = self._linear(out)
+        return out
+
+    ...
+```
+
+---
+
+```python
+class NextWordPredictionTransformer(Module):
+    """Transformer for predicting the next tokens in a sequence."""
+
+    ...
+
+    def _init_weights(self) -> NextWordPredictionTransformer:
+        """Parameter initialisaion from Attention is all you Need."""
+        for p in self.parameters():
+            if p.dim() > 1:
+                xavier_uniform_(p)
+        return self
+
+    def _make_mask(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        """Make causal and padding masks."""
+        causal_mask = ones(x.size(0) * self._n_heads, x.size(1), x.size(1))
+        causal_mask = tril(causal_mask) == 0
+        padding_mask = x == PAD_TOKEN_IDX
+        return causal_mask.to(x.device), padding_mask.to(x.device)
+```
+
+---
+
+Define the training routine:
+
+```python
+def _train_step(
+    x_batch: Tensor,
+    y_batch: Tensor,
+    model: Module,
+    loss_fn: Callable[[Tensor, Tensor], Tensor],
+    optimizer: Optimizer,
+    lr_scheduler: LRScheduler,
+    clip_grads: float | None = None,
+) -> Tensor:
+    """One iteration of the training loop (for one batch)."""
+    model.train()
+    y_pred = model(x_batch)
+    loss_batch = loss_fn(y_pred.permute(0, 2, 1), y_batch)
+
+    optimizer.zero_grad(set_to_none=True)
+    loss_batch.backward()
+    if clip_grads:
+        clip_grad_norm_(model.parameters(), clip_grads)
+    optimizer.step()
+    lr_scheduler.step()
+
+    return loss_batch
+```
+
+---
+
+```python
+@no_grad()
+def _val_step(
+    x_batch: Tensor,
+    y_batch: Tensor,
+    model: Module,
+    loss_fn: Callable[[Tensor, Tensor], Tensor],
+) -> Tensor:
+    """One iteration of the validation loop (for one batch)."""
+    model.eval()
+    y_pred = model(x_batch)
+    loss_batch = loss_fn(y_pred.permute(0, 2, 1), y_batch)
+    return loss_batch
+```
+
+---
+
+![](images/lr_schedule.png)
+
+```python
+def warmup_schedule(step: int, warmup_steps: int, max_steps: int):
+    """Learning rate schedule function taken from GPT-1 paper."""
+    lr_factor = 0.5 * (1 + math.cos(math.pi * step / max_steps))
+    if step <= warmup_steps:
+        lr_factor *= step / warmup_steps
+    return lr_factor
+```
+
+---
+
+```python
+def train(
+    model: Module,
+    train_data: DataLoader,
+    val_data: DataLoader,
+    n_epochs: int,
+    learning_rate: float = 0.001,
+    warmup_epochs: float = 0.5,
+    clip_grads: float | None = None,
+    random_seed: int = 42,
+    device: device = get_best_device(cuda_priority=1, mps_priority=3, cpu_priority=2),
+) -> Tuple[dict[int, float], dict[int, float], ModelCheckpoint]:
+    """Training loop for transformer decoder."""
+    manual_seed(random_seed)
+    model.to(device)
+
+    optimizer = Adam(model.parameters(), lr=learning_rate)
+    loss_fn = CrossEntropyLoss(ignore_index=PAD_TOKEN_IDX)
+
+    n_batches = len(train_data)
+    n_warmup_steps = math.floor(warmup_epochs * n_batches)
+    n_steps = n_epochs * n_batches
+    lrs_fn = partial(warmup_schedule, warmup_steps=n_warmup_steps, max_steps=n_steps)
+    lrs = LambdaLR(optimizer, lrs_fn)
+
+    train_losses: dict[int, float] = {}
+    val_losses: dict[int, float] = {}
+
+    ...
+```
+
+---
+
+```python
+def train(...) -> Tuple[Dict[int, float], Dict[int, float], ModelCheckpoint]:
+    """Training loop for LTSM flavoured RNNs on sequence data."""
+
+    ...
+
+    print(f"number of warmup steps: {n_warmup_steps} / {n_steps}")
+    for epoch in range(1, n_epochs + 1):
+        loss_train = tensor(0.0).to(device)
+        for i, (x_batch, y_batch) in enumerate((pbar := tqdm(train_data)), start=1):
+            x = x_batch.to(device, non_blocking=True)
+            y = y_batch.to(device, non_blocking=True)
+            loss_train += _train_step(x, y, model, loss_fn, optimizer, lrs, clip_grads)
+            lr = lrs.get_last_lr()[0]
+            pbar.set_description(
+                f"epoch {epoch} training loss = {loss_train/i:.4f} (LR = {lr:.8f})"
+            )
+
+        loss_val = tensor(0.0).to(device)
+        for x_batch, y_batch in val_data:
+            x = x_batch.to(device, non_blocking=True)
+            y = y_batch.to(device, non_blocking=True)
+            loss_val += _val_step(x, y, model, loss_fn)
+
+        epoch_train_loss = loss_train.item() / len(train_data)
+        epoch_val_loss = loss_val.item() / len(val_data)
+
+        if epoch == 1 or epoch_val_loss < min(val_losses.values()):
+            best_checkpoint = ModelCheckpoint(
+                epoch, epoch_train_loss, epoch_val_loss, model.state_dict().copy()
+            )
+
+        train_losses[epoch] = epoch_train_loss
+        val_losses[epoch] = epoch_val_loss
+
+        if _early_stop(val_losses):
+            break
+
+    ...
+
+```
+
+---
+
+```python
+def train(...) -> Tuple[Dict[int, float], Dict[int, float], ModelCheckpoint]:
+    """Training loop for LTSM flavoured RNNs on sequence data."""
+
+    ...
+
+    print("\nbest model:")
+    print(f"|-- epoch: {best_checkpoint.epoch}")
+    print(f"|-- validation loss: {best_checkpoint.val_loss:.4f}")
+
+    model.load_state_dict(best_checkpoint.state_dict)
+    return train_losses, val_losses, best_checkpoint
+```
+
+---
+
+Train the model:
+
+```python
+# Hyper-parameters that lead to a model with 406,306 parameters.
+SIZE_EMBED = 256
+
+MAX_EPOCHS = 30
+BATCH_SIZE = 32
+MAX_SEQ_LEN = 100
+MIN_SEQ_LEN = 10
+MIN_WORD_FREQ = 1
+MAX_LEARNING_RATE = 0.001
+WARMUP_EPOCHS = 2
+GRADIENT_CLIP = 5
+```
+
+---
+
+![](images/decoder_train_stats.png){width=50%}
+
+```text
+number of warmup steps: 33692 / 505380
+epoch 1 training loss = 6.0603 (LR = 0.00049863): 100%|██████████| 16846/16846 [1:40:23<00:00,  2.80it/s]
+epoch 2 training loss = 5.2419 (LR = 0.00098907): 100%|██████████| 16846/16846 [1:40:26<00:00,  2.80it/s]
+epoch 3 training loss = 5.0985 (LR = 0.00097553): 100%|██████████| 16846/16846 [1:40:29<00:00,  2.79it/s]
+epoch 4 training loss = 4.9940 (LR = 0.00095677): 100%|██████████| 16846/16846 [1:40:31<00:00,  2.79it/s]
+epoch 5 training loss = 4.9635 (LR = 0.00093301): 100%|██████████| 16846/16846 [1:40:30<00:00,  2.79it/s]
+
+best model:
+|-- epoch: 3
+|-- validation loss: 5.1783
+```
+
+### Generating text from the decoder model
+
+```python
+def generate(
+    model: NextWordPredictionTransformer,
+    prompt: str,
+    tokenizer: _Tokenizer,
+    strategy: Literal["greedy", "sample", "topk"] = "greedy",
+    output_length: int = 60,
+    temperature: float = 1.0,
+    random_seed: int = 42,
+    device: device = get_best_device(),
+    *,
+    k: int = 2,
+) -> str:
+    """Generate new text conditional on a text prompt."""
+    manual_seed(random_seed)
+
+    model.to(device)
+    model.eval()
+
+    prompt_tokens = tokenizer(prompt)
+    token_sequence = prompt_tokens.copy()
+    for _ in range(output_length):
+        x = tensor([token_sequence], device=device)
+        token_logits = model(x)
+        token_pred = decode(token_logits[0, -1], strategy, temperature, k=k)
+        token_sequence += [token_pred.item()]
+
+    new_token_sequence = token_sequence[len(prompt_tokens) :]
+    new_token_sequence = token_sequence[len(prompt_tokens) :]
+    return format_generated_words(tokenizer.tokens2text(new_token_sequence), prompt)
+```
+
+---
+
+Start with an untrained model as a reference point:
+
+```python
+prompt = "This is a classic horror and"
+
+# ==> THIS IS A CLASSIC HORROR AND tsa tsa tsa wiimote wiimote upclose upclose upclose
+# naturalism upfront upfront upfront 1930the punctuation indiscernible upfront upfront
+# upfront upfront upfront upfront upfront granting whining nazarin certo certo certo
+# upfront perine perine centralized neurological neurological neurological crestfallen
+# crestfallen allfor neurological neurological neurological cassavetess perine perine
+# laughter laughter laughter laughter certo certo yorkavant yorkavant lacing lacing lacing
+# lacing allfor boredome yorkavant boredome yorkavant jobmore savannahs neurological
+# neurological lunchmeat badmen yorkavant yorkavant yorkavant thousands thousands thousands
+# thousands thousands yorkavant thousands thousands forego forego world 1930the 1930the
+# 1930the 1930the 1930the 1930the world world thousands kinkle centralized centralized
+# centralized earnings earnings earnings allyway allyway xian...
+```
+
+---
+
+Then take a look at what a top-5 decoding strategy yields with the trained model:
+
+```python
+prompt = "This is a classic horror and"
+
+# ==> THIS IS A CLASSIC HORROR AND a good movie. If youre looking for a good laugh at it.
+# It is the worst movie ever made. I think it was not. It was a very good thing. Its a
+# shame that this film was made in a movie. The acting is good. The acting is good and the
+# only good thing about it. The movie is that I was really disappointed with this one. This
+# movie is so much of the movie. The acting is good. Its not good. I dont watch it was
+# terrible...
+```
 
 ## Exciting things to try with this LLM
 

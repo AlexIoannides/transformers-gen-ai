@@ -629,21 +629,642 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb13-1"><a h
 <p>Models were trained using one of:</p>
 <ul>
 <li>Apple M1 Max</li>
-<li>AWS <code>p3.xlarge</code> instance with a single NVIDIA V100 Tensor
-Core GPU.</li>
+<li>AWS <code>p3.xlarge</code> EC2 instance with a single NVIDIA V100
+Tensor Core GPU.</li>
 </ul>
 </section></section>
-<section id="benchmarking-with-an-rnn" class="title-slide slide level2">
-<h2>Benchmarking with an RNN</h2>
-<p>TODO</p>
+<section>
+<section id="rnn-benchmark-model" class="title-slide slide level2">
+<h2>RNN benchmark model</h2>
+<p><img data-src="images/ltsm.png" /></p>
 </section>
+<section class="slide level3">
 
-<section id="generative-transformer-decoder"
-class="title-slide slide level2">
-<h2>Generative transformer-decoder</h2>
-<p>TODO</p>
+<p>Define the model:</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> torch <span class="im">import</span> Tensor, device, manual_seed, no_grad, tensor, zeros</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> torch.nn <span class="im">import</span> LSTM, CrossEntropyLoss, Embedding, Linear, Module</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> torch.optim <span class="im">import</span> Adam, Optimizer</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> torch.utils.data <span class="im">import</span> DataLoader</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> NextWordPredictionRNN(Module):</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;LSTM for predicting the next token in a sequence.&quot;&quot;&quot;</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, size_vocab: <span class="bu">int</span>, size_embed: <span class="bu">int</span>, size_hidden: <span class="bu">int</span>):</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>        <span class="bu">super</span>().<span class="fu">__init__</span>()</span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._size_hidden <span class="op">=</span> size_hidden</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._embedding <span class="op">=</span> Embedding(size_vocab, size_embed)</span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._lstm <span class="op">=</span> LSTM(size_embed, size_hidden, batch_first<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._linear <span class="op">=</span> Linear(size_hidden, size_vocab)</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> forward(<span class="va">self</span>, x: Tensor, hidden: Tensor, cell: Tensor) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._embedding(x).unsqueeze(<span class="dv">1</span>)</span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>        out, (hidden, cell) <span class="op">=</span> <span class="va">self</span>._lstm(out, (hidden, cell))</span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._linear(out).reshape(out.shape[<span class="dv">0</span>], <span class="op">-</span><span class="dv">1</span>)</span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> out, hidden, cell</span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> initialise(<span class="va">self</span>, batch_size: <span class="bu">int</span>, device_: device) <span class="op">-&gt;</span> Tuple[Tensor, Tensor]:</span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a>        hidden <span class="op">=</span> zeros(<span class="dv">1</span>, batch_size, <span class="va">self</span>._size_hidden, device<span class="op">=</span>device_)</span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a>        cell <span class="op">=</span> zeros(<span class="dv">1</span>, batch_size, <span class="va">self</span>._size_hidden, device<span class="op">=</span>device_)</span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> hidden, cell</span></code></pre></div>
 </section>
+<section class="slide level3">
 
+<p>Define the training routine:</p>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _train_step(</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    x_batch: Tensor,</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    y_batch: Tensor,</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    model: Module,</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    loss_fn: Callable[[Tensor, Tensor], Tensor],</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    optimizer: Optimizer,</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    device: device,</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;One iteration of the training loop (for one batch).&quot;&quot;&quot;</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    model.train()</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    batch_size, sequence_length <span class="op">=</span> x_batch.shape</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>    loss_batch <span class="op">=</span> tensor(<span class="fl">0.0</span>, device<span class="op">=</span>device)</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>    optimizer.zero_grad(set_to_none<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>    hidden, cell <span class="op">=</span> model.initialise(batch_size, device)</span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> n <span class="kw">in</span> <span class="bu">range</span>(sequence_length):</span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>        y_pred, hidden, cell <span class="op">=</span> model(x_batch[:, n], hidden, cell)</span>
+<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a>        loss_batch <span class="op">+=</span> loss_fn(y_pred, y_batch[:, n])</span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a>    loss_batch.backward()</span>
+<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a>    optimizer.step()</span>
+<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> loss_batch <span class="op">/</span> sequence_length</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="at">@no_grad</span>()</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _val_step(</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    x_batch: Tensor,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    y_batch: Tensor,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    model: Module,</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>    loss_fn: Callable[[Tensor, Tensor], Tensor],</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>    device: device,</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;One iteration of the validation loop (for one batch).&quot;&quot;&quot;</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    model.<span class="bu">eval</span>()</span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>    batch_size, sequence_length <span class="op">=</span> x_batch.shape</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a>    loss_batch <span class="op">=</span> tensor(<span class="fl">0.0</span>, device<span class="op">=</span>device)</span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>    hidden, cell <span class="op">=</span> model.initialise(batch_size, device)</span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> n <span class="kw">in</span> <span class="bu">range</span>(sequence_length):</span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a>        y_pred, hidden, cell <span class="op">=</span> model(x_batch[:, n], hidden, cell)</span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a>        loss_batch <span class="op">+=</span> loss_fn(y_pred, y_batch[:, n])</span>
+<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-20"><a href="#cb16-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> loss_batch <span class="op">/</span> sequence_length</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train(</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    model: Module,</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    train_data: DataLoader,</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    val_data: DataLoader,</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    n_epochs: <span class="bu">int</span>,</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    learning_rate: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.001</span>,</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>    random_seed: <span class="bu">int</span> <span class="op">=</span> <span class="dv">42</span>,</span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    device: device <span class="op">=</span> get_best_device(),</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tuple[Dict[<span class="bu">int</span>, <span class="bu">float</span>], Dict[<span class="bu">int</span>, <span class="bu">float</span>], ModelCheckpoint]:</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Training loop for LTSM flavoured RNNs on sequence data.&quot;&quot;&quot;</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>    manual_seed(random_seed)</span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>    model.to(device)</span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>    optimizer <span class="op">=</span> Adam(model.parameters(), lr<span class="op">=</span>learning_rate)</span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>    loss_fn <span class="op">=</span> CrossEntropyLoss(ignore_index<span class="op">=</span>PAD_TOKEN_IDX)</span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a>    train_losses: Dict[<span class="bu">int</span>, <span class="bu">float</span>] <span class="op">=</span> {}</span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a>    val_losses: Dict[<span class="bu">int</span>, <span class="bu">float</span>] <span class="op">=</span> {}</span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a>    ...</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train(...) <span class="op">-&gt;</span> Tuple[Dict[<span class="bu">int</span>, <span class="bu">float</span>], Dict[<span class="bu">int</span>, <span class="bu">float</span>], ModelCheckpoint]:</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Training loop for LTSM flavoured RNNs on sequence data.&quot;&quot;&quot;</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> epoch <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, n_epochs <span class="op">+</span> <span class="dv">1</span>):</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>        loss_train <span class="op">=</span> tensor(<span class="fl">0.0</span>).to(device)</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> i, (x_batch, y_batch) <span class="kw">in</span> <span class="bu">enumerate</span>((pbar <span class="op">:=</span> tqdm(train_data)), start<span class="op">=</span><span class="dv">1</span>):</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>            x <span class="op">=</span> x_batch.to(device, non_blocking<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>            y <span class="op">=</span> y_batch.to(device, non_blocking<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>            loss_train <span class="op">+=</span> _train_step(x, y, model, loss_fn, optimizer, device)</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>            pbar.set_description(<span class="ss">f&quot;epoch </span><span class="sc">{</span>epoch<span class="sc">}</span><span class="ss"> training loss = </span><span class="sc">{</span>loss_train<span class="op">/</span>i<span class="sc">:.4f}</span><span class="ss">&quot;</span>)</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>        loss_val <span class="op">=</span> tensor(<span class="fl">0.0</span>).to(device)</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> x_batch, y_batch <span class="kw">in</span> val_data:</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>            x <span class="op">=</span> x_batch.to(device, non_blocking<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a>            y <span class="op">=</span> y_batch.to(device, non_blocking<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a>            loss_val <span class="op">+=</span> _val_step(x, y, model, loss_fn, device)</span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a>        epoch_train_loss <span class="op">=</span> loss_train.item() <span class="op">/</span> <span class="bu">len</span>(train_data)</span>
+<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a>        epoch_val_loss <span class="op">=</span> loss_val.item() <span class="op">/</span> <span class="bu">len</span>(val_data)</span>
+<span id="cb18-22"><a href="#cb18-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-23"><a href="#cb18-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> epoch <span class="op">==</span> <span class="dv">1</span> <span class="kw">or</span> epoch_val_loss <span class="op">&lt;</span> <span class="bu">min</span>(val_losses.values()):</span>
+<span id="cb18-24"><a href="#cb18-24" aria-hidden="true" tabindex="-1"></a>            best_checkpoint <span class="op">=</span> ModelCheckpoint(</span>
+<span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a>                epoch, epoch_train_loss, epoch_val_loss, model.state_dict().copy()</span>
+<span id="cb18-26"><a href="#cb18-26" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb18-27"><a href="#cb18-27" aria-hidden="true" tabindex="-1"></a>        train_losses[epoch] <span class="op">=</span> epoch_train_loss</span>
+<span id="cb18-28"><a href="#cb18-28" aria-hidden="true" tabindex="-1"></a>        val_losses[epoch] <span class="op">=</span> epoch_val_loss</span>
+<span id="cb18-29"><a href="#cb18-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-30"><a href="#cb18-30" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _early_stop(val_losses):</span>
+<span id="cb18-31"><a href="#cb18-31" aria-hidden="true" tabindex="-1"></a>            <span class="cf">break</span></span>
+<span id="cb18-32"><a href="#cb18-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-33"><a href="#cb18-33" aria-hidden="true" tabindex="-1"></a>    ...</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train(...) <span class="op">-&gt;</span> Tuple[Dict[<span class="bu">int</span>, <span class="bu">float</span>], Dict[<span class="bu">int</span>, <span class="bu">float</span>], ModelCheckpoint]:</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Training loop for LTSM flavoured RNNs on sequence data.&quot;&quot;&quot;</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;</span><span class="ch">\n</span><span class="st">best model:&quot;</span>)</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;|-- epoch: </span><span class="sc">{</span>best_checkpoint<span class="sc">.</span>epoch<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;|-- validation loss: </span><span class="sc">{</span>best_checkpoint<span class="sc">.</span>val_loss<span class="sc">:.4f}</span><span class="ss">&quot;</span>)</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>    model.load_state_dict(best_checkpoint.state_dict)</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> train_losses, val_losses, best_checkpoint</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p>Train the model:</p>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Hyper-parameters that lead to a model with 215,234 parameters.</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>SIZE_EMBED <span class="op">=</span> <span class="dv">256</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>SIZE_HIDDEN <span class="op">=</span> <span class="dv">512</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>MAX_EPOCHS <span class="op">=</span> <span class="dv">30</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>BATCH_SIZE <span class="op">=</span> <span class="dv">256</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>MAX_SEQ_LEN <span class="op">=</span> <span class="dv">100</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>MIN_SEQ_LEN <span class="op">=</span> <span class="dv">10</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>MIN_WORD_FREQ <span class="op">=</span> <span class="dv">2</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>LEARNING_RATE <span class="op">=</span> <span class="fl">0.005</span></span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p><img data-src="images/lstm_train_stats.png"
+style="width:50.0%" /></p>
+<pre class="text"><code>epoch 1 training loss = 5.4329: 100%|██████████| 2105/2105 [2:31:20&lt;00:00,  4.31s/it]  
+epoch 2 training loss = 4.8774: 100%|██████████| 2105/2105 [2:30:43&lt;00:00,  4.30s/it]  
+epoch 3 training loss = 4.6274: 100%|██████████| 2105/2105 [2:31:16&lt;00:00,  4.31s/it]  
+epoch 4 training loss = 4.4552: 100%|██████████| 2105/2105 [2:30:40&lt;00:00,  4.29s/it]  
+
+best model:
+|-- epoch: 2
+|-- validation loss: 5.0893</code></pre>
+</section>
+<section id="text-generation-strategies" class="slide level3">
+<h3>Text generation strategies</h3>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _sample_decoding(logits: Tensor, temperature: <span class="bu">float</span> <span class="op">=</span> <span class="fl">1.0</span>) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Generate next token using sample decoding strategy.&quot;&quot;&quot;</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> Categorical(logits<span class="op">=</span>logits.squeeze() <span class="op">/</span> temperature).sample()</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _top_k_decoding(logits: Tensor, temperature: <span class="bu">float</span> <span class="op">=</span> <span class="fl">1.0</span>, k: <span class="bu">int</span> <span class="op">=</span> <span class="dv">3</span>) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Generate next token using top-k decoding strategy.&quot;&quot;&quot;</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>    token_probs <span class="op">=</span> Categorical(logits<span class="op">=</span>logits.squeeze() <span class="op">/</span> temperature).probs</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>    top_k_tokens <span class="op">=</span> topk(token_probs, k<span class="op">=</span>k)</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>    sampled_token <span class="op">=</span> Categorical(probs<span class="op">=</span>top_k_tokens.values).sample()</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> top_k_tokens.indices[sampled_token]</span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _greedy_decoding(logits: Tensor, temperature: <span class="bu">float</span> <span class="op">=</span> <span class="fl">1.0</span>) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Generate next token using greedy decoding strategy.&quot;&quot;&quot;</span></span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>    token_probs <span class="op">=</span> Categorical(logits<span class="op">=</span>logits.squeeze() <span class="op">/</span> temperature).probs</span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> argmax(token_probs)</span>
+<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-19"><a href="#cb22-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-20"><a href="#cb22-20" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> decode(</span>
+<span id="cb22-21"><a href="#cb22-21" aria-hidden="true" tabindex="-1"></a>    token_logits: Tensor,</span>
+<span id="cb22-22"><a href="#cb22-22" aria-hidden="true" tabindex="-1"></a>    strategy: Literal[<span class="st">&quot;greedy&quot;</span>, <span class="st">&quot;sample&quot;</span>, <span class="st">&quot;topk&quot;</span>] <span class="op">=</span> <span class="st">&quot;greedy&quot;</span>,</span>
+<span id="cb22-23"><a href="#cb22-23" aria-hidden="true" tabindex="-1"></a>    temperature: <span class="bu">float</span> <span class="op">=</span> <span class="fl">1.0</span>,</span>
+<span id="cb22-24"><a href="#cb22-24" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb22-25"><a href="#cb22-25" aria-hidden="true" tabindex="-1"></a>    k: <span class="bu">int</span> <span class="op">=</span> <span class="dv">5</span>,</span>
+<span id="cb22-26"><a href="#cb22-26" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb22-27"><a href="#cb22-27" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Decode generative model output using the specified strategy.&quot;&quot;&quot;</span></span>
+<span id="cb22-28"><a href="#cb22-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">match</span> strategy:</span>
+<span id="cb22-29"><a href="#cb22-29" aria-hidden="true" tabindex="-1"></a>        <span class="cf">case</span> <span class="st">&quot;greedy&quot;</span>:</span>
+<span id="cb22-30"><a href="#cb22-30" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> _greedy_decoding(token_logits, temperature)</span>
+<span id="cb22-31"><a href="#cb22-31" aria-hidden="true" tabindex="-1"></a>        <span class="cf">case</span> <span class="st">&quot;topk&quot;</span>:</span>
+<span id="cb22-32"><a href="#cb22-32" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> _top_k_decoding(token_logits, temperature, k)</span>
+<span id="cb22-33"><a href="#cb22-33" aria-hidden="true" tabindex="-1"></a>        <span class="cf">case</span> <span class="st">&quot;sample&quot;</span>:</span>
+<span id="cb22-34"><a href="#cb22-34" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> _sample_decoding(token_logits, temperature)</span></code></pre></div>
+</section>
+<section id="generating-text-from-the-rnn-model" class="slide level3">
+<h3>Generating text from the RNN model</h3>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> generate(</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    model: NextWordPredictionRNN,</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    prompt: <span class="bu">str</span>,</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    tokenizer: _Tokenizer,</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    strategy: Literal[<span class="st">&quot;greedy&quot;</span>, <span class="st">&quot;sample&quot;</span>, <span class="st">&quot;topk&quot;</span>] <span class="op">=</span> <span class="st">&quot;greedy&quot;</span>,</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    output_length: <span class="bu">int</span> <span class="op">=</span> <span class="dv">60</span>,</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    temperature: <span class="bu">float</span> <span class="op">=</span> <span class="fl">1.0</span>,</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    random_seed: <span class="bu">int</span> <span class="op">=</span> <span class="dv">42</span>,</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>    device: device <span class="op">=</span> get_best_device(),</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>    k: <span class="bu">int</span> <span class="op">=</span> <span class="dv">2</span>,</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Generate new text conditional on a text prompt.&quot;&quot;&quot;</span></span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>    manual_seed(random_seed)</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>    model.to(device)</span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>    model.<span class="bu">eval</span>()</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>    prompt_tokens <span class="op">=</span> tokenizer(prompt)</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Feed tokenised prompt into model.</span></span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>    hidden, cell <span class="op">=</span> model.initialise(<span class="dv">1</span>, device)</span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> token <span class="kw">in</span> prompt_tokens[:<span class="op">-</span><span class="dv">1</span>]:</span>
+<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>        x <span class="op">=</span> tensor([token], device<span class="op">=</span>device)</span>
+<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>        _, hidden, cell <span class="op">=</span> model(x, hidden, cell)</span>
+<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Then predict the next token, add it to the sequence, and iterate</span></span>
+<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>    token_sequence <span class="op">=</span> prompt_tokens.copy()</span>
+<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(output_length):</span>
+<span id="cb23-30"><a href="#cb23-30" aria-hidden="true" tabindex="-1"></a>        x <span class="op">=</span> tensor([token_sequence[<span class="op">-</span><span class="dv">1</span>]], device<span class="op">=</span>device)</span>
+<span id="cb23-31"><a href="#cb23-31" aria-hidden="true" tabindex="-1"></a>        token_logits, hidden, cell <span class="op">=</span> model(x, hidden, cell)</span>
+<span id="cb23-32"><a href="#cb23-32" aria-hidden="true" tabindex="-1"></a>        token_pred <span class="op">=</span> decode(token_logits, strategy, temperature, k<span class="op">=</span>k)</span>
+<span id="cb23-33"><a href="#cb23-33" aria-hidden="true" tabindex="-1"></a>        token_sequence <span class="op">+=</span> [token_pred.item()]</span>
+<span id="cb23-34"><a href="#cb23-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-35"><a href="#cb23-35" aria-hidden="true" tabindex="-1"></a>    new_token_sequence <span class="op">=</span> token_sequence[<span class="bu">len</span>(prompt_tokens) :]</span>
+<span id="cb23-36"><a href="#cb23-36" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> format_generated_words(tokenizer.tokens2text(new_token_sequence), prompt)</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p>Start with an untrained model as a reference point:</p>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">&quot;This is a classic horror and&quot;</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="co"># ==&gt; THIS IS A CLASSIC HORROR AND numerically unsavory aiken pyewacket nagase comparative</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="co"># dave compounded surfboards seemsdestined chekhov interdiction prussic hunh kosugis</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a><span class="co"># germanys sole filmsfor sedimentation albino 2036 krug zefferelli djalili baldwins chowder</span></span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a><span class="co"># strauss shutes haifa seeming 101st mrbumble grandmas noll bulgarias lenders repressed</span></span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a><span class="co"># deneuve ounce emphasise salome tracking avian mrmyagi megalopolis countries dolorous</span></span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a><span class="co"># fairview dying subtitle appointed dollar opting energized tremell cya slinging riot</span></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a><span class="co"># seemsslow secaucus muco forgo mediation patio flogs armsin sbaraglia snowflake usurps</span></span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a><span class="co"># roadmovie slogans holy vanishes zuckers herrmann encyclopedia dorma chapas fairview whit</span></span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a><span class="co"># mergers katie motherhood ejaculation stepehn nat unremitting munched munched sceneand</span></span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a><span class="co"># jarhead skaal broadcasted pottery admonition lewbert upholding neat projectile bjork...</span></span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p>Then take a look at what a top-5 decoding strategy yields with the
+trained model:</p>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">&quot;This is a classic horror and&quot;</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="co"># ==&gt; THIS IS A CLASSIC HORROR AND the story is a bit of a letdown. The story is told in</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="co"># some ways. The only redeeming feature in the whole movie is that its not a good idea. Its</span></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="co"># a wonderful story with a very limited performance and the music and the script. The story</span></span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a><span class="co"># is not that bad. The story is not a spoiler. The story is a little slow but its not the</span></span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a><span class="co"># best one to come to mind of mencia. Its not a movie to watch. It is a good film to watch.</span></span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Its not....</span></span></code></pre></div>
+</section></section>
+<section>
+<section id="generative-decoder-model" class="title-slide slide level2">
+<h2>Generative decoder model</h2>
+<p><img data-src="images/encoder_decoder_mod.png"
+style="width:45.0%" /></p>
+</section>
+<section id="positional-encoding" class="slide level3">
+<h3>Positional encoding</h3>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> PositionalEncoding(Module):</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Position encoder taken from &#39;Attention is all you Need&#39;.&quot;&quot;&quot;</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, size_embed: <span class="bu">int</span>, dropout: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.1</span>, max_seq_len: <span class="bu">int</span> <span class="op">=</span> <span class="dv">1000</span>):</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">super</span>().<span class="fu">__init__</span>()</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._dropout <span class="op">=</span> Dropout(p<span class="op">=</span>dropout)</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>        position <span class="op">=</span> arange(max_seq_len).unsqueeze(<span class="dv">1</span>)</span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a>        div_term <span class="op">=</span> exp(arange(<span class="dv">0</span>, size_embed, <span class="dv">2</span>) <span class="op">*</span> (<span class="op">-</span>log(tensor(<span class="fl">10000.0</span>)) <span class="op">/</span> size_embed))</span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a>        pos_encoding <span class="op">=</span> zeros(max_seq_len, size_embed)</span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a>        pos_encoding[:, <span class="dv">0</span>::<span class="dv">2</span>] <span class="op">=</span> sin(position <span class="op">*</span> div_term)</span>
+<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a>        pos_encoding[:, <span class="dv">1</span>::<span class="dv">2</span>] <span class="op">=</span> cos(position <span class="op">*</span> div_term)</span>
+<span id="cb26-13"><a href="#cb26-13" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.register_buffer(<span class="st">&quot;_pos_encoding&quot;</span>, pos_encoding)  <span class="co"># don&#39;t train these</span></span>
+<span id="cb26-14"><a href="#cb26-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-15"><a href="#cb26-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> forward(<span class="va">self</span>, x: Tensor) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb26-16"><a href="#cb26-16" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;</span></span>
+<span id="cb26-17"><a href="#cb26-17" aria-hidden="true" tabindex="-1"></a><span class="co">        Arguments:</span></span>
+<span id="cb26-18"><a href="#cb26-18" aria-hidden="true" tabindex="-1"></a><span class="co">            x: Tensor, shape ``[batch_size, seq_len, embedding_dim]``</span></span>
+<span id="cb26-19"><a href="#cb26-19" aria-hidden="true" tabindex="-1"></a><span class="co">        &quot;&quot;&quot;</span></span>
+<span id="cb26-20"><a href="#cb26-20" aria-hidden="true" tabindex="-1"></a>        seq_len <span class="op">=</span> x.size(<span class="dv">1</span>)</span>
+<span id="cb26-21"><a href="#cb26-21" aria-hidden="true" tabindex="-1"></a>        x <span class="op">=</span> x <span class="op">+</span> <span class="va">self</span>._pos_encoding[:seq_len]</span>
+<span id="cb26-22"><a href="#cb26-22" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>._dropout(x)</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p>Define the model:</p>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> NextWordPredictionTransformer(Module):</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Transformer for predicting the next tokens in a sequence.&quot;&quot;&quot;</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, size_vocab: <span class="bu">int</span>, size_embed: <span class="bu">int</span>, n_heads: <span class="bu">int</span> <span class="op">=</span> <span class="dv">4</span>):</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">super</span>().<span class="fu">__init__</span>()</span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._size_vocab <span class="op">=</span> size_vocab</span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._size_embed <span class="op">=</span> size_embed</span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._n_heads <span class="op">=</span> n_heads</span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._position_encoder <span class="op">=</span> PositionalEncoding(size_embed)</span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._embedding <span class="op">=</span> Embedding(size_vocab, size_embed)</span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._decoder <span class="op">=</span> TransformerDecoderLayer(</span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a>            size_embed, n_heads, dim_feedforward<span class="op">=</span><span class="dv">2</span> <span class="op">*</span> size_embed, batch_first<span class="op">=</span><span class="va">True</span></span>
+<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._linear <span class="op">=</span> Linear(size_embed, size_vocab)</span>
+<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._init_weights()</span>
+<span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-17"><a href="#cb27-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> forward(<span class="va">self</span>, x: Tensor) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb27-18"><a href="#cb27-18" aria-hidden="true" tabindex="-1"></a>        x_causal_mask, x_padding_mask <span class="op">=</span> <span class="va">self</span>._make_mask(x)</span>
+<span id="cb27-19"><a href="#cb27-19" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._embedding(x) <span class="op">*</span> sqrt(tensor(<span class="va">self</span>._size_embed))</span>
+<span id="cb27-20"><a href="#cb27-20" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._position_encoder(out)</span>
+<span id="cb27-21"><a href="#cb27-21" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._decoder(</span>
+<span id="cb27-22"><a href="#cb27-22" aria-hidden="true" tabindex="-1"></a>            out,</span>
+<span id="cb27-23"><a href="#cb27-23" aria-hidden="true" tabindex="-1"></a>            out,</span>
+<span id="cb27-24"><a href="#cb27-24" aria-hidden="true" tabindex="-1"></a>            tgt_mask<span class="op">=</span>x_causal_mask,</span>
+<span id="cb27-25"><a href="#cb27-25" aria-hidden="true" tabindex="-1"></a>            tgt_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
+<span id="cb27-26"><a href="#cb27-26" aria-hidden="true" tabindex="-1"></a>            memory_mask<span class="op">=</span>x_causal_mask,</span>
+<span id="cb27-27"><a href="#cb27-27" aria-hidden="true" tabindex="-1"></a>            memory_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
+<span id="cb27-28"><a href="#cb27-28" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb27-29"><a href="#cb27-29" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._linear(out)</span>
+<span id="cb27-30"><a href="#cb27-30" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> out</span>
+<span id="cb27-31"><a href="#cb27-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-32"><a href="#cb27-32" aria-hidden="true" tabindex="-1"></a>    ...</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> NextWordPredictionTransformer(Module):</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Transformer for predicting the next tokens in a sequence.&quot;&quot;&quot;</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> _init_weights(<span class="va">self</span>) <span class="op">-&gt;</span> NextWordPredictionTransformer:</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Parameter initialisaion from Attention is all you Need.&quot;&quot;&quot;</span></span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> p <span class="kw">in</span> <span class="va">self</span>.parameters():</span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> p.dim() <span class="op">&gt;</span> <span class="dv">1</span>:</span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>                xavier_uniform_(p)</span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span></span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> _make_mask(<span class="va">self</span>, x: Tensor) <span class="op">-&gt;</span> <span class="bu">tuple</span>[Tensor, Tensor]:</span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Make causal and padding masks.&quot;&quot;&quot;</span></span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a>        causal_mask <span class="op">=</span> ones(x.size(<span class="dv">0</span>) <span class="op">*</span> <span class="va">self</span>._n_heads, x.size(<span class="dv">1</span>), x.size(<span class="dv">1</span>))</span>
+<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a>        causal_mask <span class="op">=</span> tril(causal_mask) <span class="op">==</span> <span class="dv">0</span></span>
+<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a>        padding_mask <span class="op">=</span> x <span class="op">==</span> PAD_TOKEN_IDX</span>
+<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> causal_mask.to(x.device), padding_mask.to(x.device)</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p>Define the training routine:</p>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _train_step(</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    x_batch: Tensor,</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    y_batch: Tensor,</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>    model: Module,</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>    loss_fn: Callable[[Tensor, Tensor], Tensor],</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>    optimizer: Optimizer,</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>    lr_scheduler: LRScheduler,</span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>    clip_grads: <span class="bu">float</span> <span class="op">|</span> <span class="va">None</span> <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;One iteration of the training loop (for one batch).&quot;&quot;&quot;</span></span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>    model.train()</span>
+<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a>    y_pred <span class="op">=</span> model(x_batch)</span>
+<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>    loss_batch <span class="op">=</span> loss_fn(y_pred.permute(<span class="dv">0</span>, <span class="dv">2</span>, <span class="dv">1</span>), y_batch)</span>
+<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-15"><a href="#cb29-15" aria-hidden="true" tabindex="-1"></a>    optimizer.zero_grad(set_to_none<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb29-16"><a href="#cb29-16" aria-hidden="true" tabindex="-1"></a>    loss_batch.backward()</span>
+<span id="cb29-17"><a href="#cb29-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> clip_grads:</span>
+<span id="cb29-18"><a href="#cb29-18" aria-hidden="true" tabindex="-1"></a>        clip_grad_norm_(model.parameters(), clip_grads)</span>
+<span id="cb29-19"><a href="#cb29-19" aria-hidden="true" tabindex="-1"></a>    optimizer.step()</span>
+<span id="cb29-20"><a href="#cb29-20" aria-hidden="true" tabindex="-1"></a>    lr_scheduler.step()</span>
+<span id="cb29-21"><a href="#cb29-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-22"><a href="#cb29-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> loss_batch</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="at">@no_grad</span>()</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _val_step(</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    x_batch: Tensor,</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    y_batch: Tensor,</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>    model: Module,</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    loss_fn: Callable[[Tensor, Tensor], Tensor],</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tensor:</span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;One iteration of the validation loop (for one batch).&quot;&quot;&quot;</span></span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>    model.<span class="bu">eval</span>()</span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>    y_pred <span class="op">=</span> model(x_batch)</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>    loss_batch <span class="op">=</span> loss_fn(y_pred.permute(<span class="dv">0</span>, <span class="dv">2</span>, <span class="dv">1</span>), y_batch)</span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> loss_batch</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p><img data-src="images/lr_schedule.png" /></p>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> warmup_schedule(step: <span class="bu">int</span>, warmup_steps: <span class="bu">int</span>, max_steps: <span class="bu">int</span>):</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Learning rate schedule function taken from GPT-1 paper.&quot;&quot;&quot;</span></span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    lr_factor <span class="op">=</span> <span class="fl">0.5</span> <span class="op">*</span> (<span class="dv">1</span> <span class="op">+</span> math.cos(math.pi <span class="op">*</span> step <span class="op">/</span> max_steps))</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> step <span class="op">&lt;=</span> warmup_steps:</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>        lr_factor <span class="op">*=</span> step <span class="op">/</span> warmup_steps</span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> lr_factor</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb32"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train(</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>    model: Module,</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>    train_data: DataLoader,</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>    val_data: DataLoader,</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>    n_epochs: <span class="bu">int</span>,</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>    learning_rate: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.001</span>,</span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>    warmup_epochs: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>    clip_grads: <span class="bu">float</span> <span class="op">|</span> <span class="va">None</span> <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a>    random_seed: <span class="bu">int</span> <span class="op">=</span> <span class="dv">42</span>,</span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a>    device: device <span class="op">=</span> get_best_device(cuda_priority<span class="op">=</span><span class="dv">1</span>, mps_priority<span class="op">=</span><span class="dv">3</span>, cpu_priority<span class="op">=</span><span class="dv">2</span>),</span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tuple[<span class="bu">dict</span>[<span class="bu">int</span>, <span class="bu">float</span>], <span class="bu">dict</span>[<span class="bu">int</span>, <span class="bu">float</span>], ModelCheckpoint]:</span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Training loop for transformer decoder.&quot;&quot;&quot;</span></span>
+<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a>    manual_seed(random_seed)</span>
+<span id="cb32-14"><a href="#cb32-14" aria-hidden="true" tabindex="-1"></a>    model.to(device)</span>
+<span id="cb32-15"><a href="#cb32-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-16"><a href="#cb32-16" aria-hidden="true" tabindex="-1"></a>    optimizer <span class="op">=</span> Adam(model.parameters(), lr<span class="op">=</span>learning_rate)</span>
+<span id="cb32-17"><a href="#cb32-17" aria-hidden="true" tabindex="-1"></a>    loss_fn <span class="op">=</span> CrossEntropyLoss(ignore_index<span class="op">=</span>PAD_TOKEN_IDX)</span>
+<span id="cb32-18"><a href="#cb32-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-19"><a href="#cb32-19" aria-hidden="true" tabindex="-1"></a>    n_batches <span class="op">=</span> <span class="bu">len</span>(train_data)</span>
+<span id="cb32-20"><a href="#cb32-20" aria-hidden="true" tabindex="-1"></a>    n_warmup_steps <span class="op">=</span> math.floor(warmup_epochs <span class="op">*</span> n_batches)</span>
+<span id="cb32-21"><a href="#cb32-21" aria-hidden="true" tabindex="-1"></a>    n_steps <span class="op">=</span> n_epochs <span class="op">*</span> n_batches</span>
+<span id="cb32-22"><a href="#cb32-22" aria-hidden="true" tabindex="-1"></a>    lrs_fn <span class="op">=</span> partial(warmup_schedule, warmup_steps<span class="op">=</span>n_warmup_steps, max_steps<span class="op">=</span>n_steps)</span>
+<span id="cb32-23"><a href="#cb32-23" aria-hidden="true" tabindex="-1"></a>    lrs <span class="op">=</span> LambdaLR(optimizer, lrs_fn)</span>
+<span id="cb32-24"><a href="#cb32-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-25"><a href="#cb32-25" aria-hidden="true" tabindex="-1"></a>    train_losses: <span class="bu">dict</span>[<span class="bu">int</span>, <span class="bu">float</span>] <span class="op">=</span> {}</span>
+<span id="cb32-26"><a href="#cb32-26" aria-hidden="true" tabindex="-1"></a>    val_losses: <span class="bu">dict</span>[<span class="bu">int</span>, <span class="bu">float</span>] <span class="op">=</span> {}</span>
+<span id="cb32-27"><a href="#cb32-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-28"><a href="#cb32-28" aria-hidden="true" tabindex="-1"></a>    ...</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb33"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train(...) <span class="op">-&gt;</span> Tuple[Dict[<span class="bu">int</span>, <span class="bu">float</span>], Dict[<span class="bu">int</span>, <span class="bu">float</span>], ModelCheckpoint]:</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Training loop for LTSM flavoured RNNs on sequence data.&quot;&quot;&quot;</span></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;number of warmup steps: </span><span class="sc">{</span>n_warmup_steps<span class="sc">}</span><span class="ss"> / </span><span class="sc">{</span>n_steps<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> epoch <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, n_epochs <span class="op">+</span> <span class="dv">1</span>):</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>        loss_train <span class="op">=</span> tensor(<span class="fl">0.0</span>).to(device)</span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> i, (x_batch, y_batch) <span class="kw">in</span> <span class="bu">enumerate</span>((pbar <span class="op">:=</span> tqdm(train_data)), start<span class="op">=</span><span class="dv">1</span>):</span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>            x <span class="op">=</span> x_batch.to(device, non_blocking<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>            y <span class="op">=</span> y_batch.to(device, non_blocking<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a>            loss_train <span class="op">+=</span> _train_step(x, y, model, loss_fn, optimizer, lrs, clip_grads)</span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a>            lr <span class="op">=</span> lrs.get_last_lr()[<span class="dv">0</span>]</span>
+<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a>            pbar.set_description(</span>
+<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>                <span class="ss">f&quot;epoch </span><span class="sc">{</span>epoch<span class="sc">}</span><span class="ss"> training loss = </span><span class="sc">{</span>loss_train<span class="op">/</span>i<span class="sc">:.4f}</span><span class="ss"> (LR = </span><span class="sc">{</span>lr<span class="sc">:.8f}</span><span class="ss">)&quot;</span></span>
+<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-18"><a href="#cb33-18" aria-hidden="true" tabindex="-1"></a>        loss_val <span class="op">=</span> tensor(<span class="fl">0.0</span>).to(device)</span>
+<span id="cb33-19"><a href="#cb33-19" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> x_batch, y_batch <span class="kw">in</span> val_data:</span>
+<span id="cb33-20"><a href="#cb33-20" aria-hidden="true" tabindex="-1"></a>            x <span class="op">=</span> x_batch.to(device, non_blocking<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb33-21"><a href="#cb33-21" aria-hidden="true" tabindex="-1"></a>            y <span class="op">=</span> y_batch.to(device, non_blocking<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb33-22"><a href="#cb33-22" aria-hidden="true" tabindex="-1"></a>            loss_val <span class="op">+=</span> _val_step(x, y, model, loss_fn)</span>
+<span id="cb33-23"><a href="#cb33-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-24"><a href="#cb33-24" aria-hidden="true" tabindex="-1"></a>        epoch_train_loss <span class="op">=</span> loss_train.item() <span class="op">/</span> <span class="bu">len</span>(train_data)</span>
+<span id="cb33-25"><a href="#cb33-25" aria-hidden="true" tabindex="-1"></a>        epoch_val_loss <span class="op">=</span> loss_val.item() <span class="op">/</span> <span class="bu">len</span>(val_data)</span>
+<span id="cb33-26"><a href="#cb33-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-27"><a href="#cb33-27" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> epoch <span class="op">==</span> <span class="dv">1</span> <span class="kw">or</span> epoch_val_loss <span class="op">&lt;</span> <span class="bu">min</span>(val_losses.values()):</span>
+<span id="cb33-28"><a href="#cb33-28" aria-hidden="true" tabindex="-1"></a>            best_checkpoint <span class="op">=</span> ModelCheckpoint(</span>
+<span id="cb33-29"><a href="#cb33-29" aria-hidden="true" tabindex="-1"></a>                epoch, epoch_train_loss, epoch_val_loss, model.state_dict().copy()</span>
+<span id="cb33-30"><a href="#cb33-30" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb33-31"><a href="#cb33-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-32"><a href="#cb33-32" aria-hidden="true" tabindex="-1"></a>        train_losses[epoch] <span class="op">=</span> epoch_train_loss</span>
+<span id="cb33-33"><a href="#cb33-33" aria-hidden="true" tabindex="-1"></a>        val_losses[epoch] <span class="op">=</span> epoch_val_loss</span>
+<span id="cb33-34"><a href="#cb33-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-35"><a href="#cb33-35" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _early_stop(val_losses):</span>
+<span id="cb33-36"><a href="#cb33-36" aria-hidden="true" tabindex="-1"></a>            <span class="cf">break</span></span>
+<span id="cb33-37"><a href="#cb33-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-38"><a href="#cb33-38" aria-hidden="true" tabindex="-1"></a>    ...</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb34"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train(...) <span class="op">-&gt;</span> Tuple[Dict[<span class="bu">int</span>, <span class="bu">float</span>], Dict[<span class="bu">int</span>, <span class="bu">float</span>], ModelCheckpoint]:</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Training loop for LTSM flavoured RNNs on sequence data.&quot;&quot;&quot;</span></span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;</span><span class="ch">\n</span><span class="st">best model:&quot;</span>)</span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;|-- epoch: </span><span class="sc">{</span>best_checkpoint<span class="sc">.</span>epoch<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;|-- validation loss: </span><span class="sc">{</span>best_checkpoint<span class="sc">.</span>val_loss<span class="sc">:.4f}</span><span class="ss">&quot;</span>)</span>
+<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a>    model.load_state_dict(best_checkpoint.state_dict)</span>
+<span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> train_losses, val_losses, best_checkpoint</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p>Train the model:</p>
+<div class="sourceCode" id="cb35"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Hyper-parameters that lead to a model with 406,306 parameters.</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>SIZE_EMBED <span class="op">=</span> <span class="dv">256</span></span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>MAX_EPOCHS <span class="op">=</span> <span class="dv">30</span></span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>BATCH_SIZE <span class="op">=</span> <span class="dv">32</span></span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>MAX_SEQ_LEN <span class="op">=</span> <span class="dv">100</span></span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>MIN_SEQ_LEN <span class="op">=</span> <span class="dv">10</span></span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>MIN_WORD_FREQ <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>MAX_LEARNING_RATE <span class="op">=</span> <span class="fl">0.001</span></span>
+<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a>WARMUP_EPOCHS <span class="op">=</span> <span class="dv">2</span></span>
+<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a>GRADIENT_CLIP <span class="op">=</span> <span class="dv">5</span></span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p><img data-src="images/decoder_train_stats.png"
+style="width:50.0%" /></p>
+<pre class="text"><code>number of warmup steps: 33692 / 505380
+epoch 1 training loss = 6.0603 (LR = 0.00049863): 100%|██████████| 16846/16846 [1:40:23&lt;00:00,  2.80it/s]
+epoch 2 training loss = 5.2419 (LR = 0.00098907): 100%|██████████| 16846/16846 [1:40:26&lt;00:00,  2.80it/s]
+epoch 3 training loss = 5.0985 (LR = 0.00097553): 100%|██████████| 16846/16846 [1:40:29&lt;00:00,  2.79it/s]
+epoch 4 training loss = 4.9940 (LR = 0.00095677): 100%|██████████| 16846/16846 [1:40:31&lt;00:00,  2.79it/s]
+epoch 5 training loss = 4.9635 (LR = 0.00093301): 100%|██████████| 16846/16846 [1:40:30&lt;00:00,  2.79it/s]
+
+best model:
+|-- epoch: 3
+|-- validation loss: 5.1783</code></pre>
+</section>
+<section id="generating-text-from-the-decoder-model"
+class="slide level3">
+<h3>Generating text from the decoder model</h3>
+<div class="sourceCode" id="cb37"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> generate(</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>    model: NextWordPredictionTransformer,</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    prompt: <span class="bu">str</span>,</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    tokenizer: _Tokenizer,</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    strategy: Literal[<span class="st">&quot;greedy&quot;</span>, <span class="st">&quot;sample&quot;</span>, <span class="st">&quot;topk&quot;</span>] <span class="op">=</span> <span class="st">&quot;greedy&quot;</span>,</span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    output_length: <span class="bu">int</span> <span class="op">=</span> <span class="dv">60</span>,</span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    temperature: <span class="bu">float</span> <span class="op">=</span> <span class="fl">1.0</span>,</span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>    random_seed: <span class="bu">int</span> <span class="op">=</span> <span class="dv">42</span>,</span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>    device: device <span class="op">=</span> get_best_device(),</span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>    k: <span class="bu">int</span> <span class="op">=</span> <span class="dv">2</span>,</span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Generate new text conditional on a text prompt.&quot;&quot;&quot;</span></span>
+<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a>    manual_seed(random_seed)</span>
+<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-16"><a href="#cb37-16" aria-hidden="true" tabindex="-1"></a>    model.to(device)</span>
+<span id="cb37-17"><a href="#cb37-17" aria-hidden="true" tabindex="-1"></a>    model.<span class="bu">eval</span>()</span>
+<span id="cb37-18"><a href="#cb37-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-19"><a href="#cb37-19" aria-hidden="true" tabindex="-1"></a>    prompt_tokens <span class="op">=</span> tokenizer(prompt)</span>
+<span id="cb37-20"><a href="#cb37-20" aria-hidden="true" tabindex="-1"></a>    token_sequence <span class="op">=</span> prompt_tokens.copy()</span>
+<span id="cb37-21"><a href="#cb37-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(output_length):</span>
+<span id="cb37-22"><a href="#cb37-22" aria-hidden="true" tabindex="-1"></a>        x <span class="op">=</span> tensor([token_sequence], device<span class="op">=</span>device)</span>
+<span id="cb37-23"><a href="#cb37-23" aria-hidden="true" tabindex="-1"></a>        token_logits <span class="op">=</span> model(x)</span>
+<span id="cb37-24"><a href="#cb37-24" aria-hidden="true" tabindex="-1"></a>        token_pred <span class="op">=</span> decode(token_logits[<span class="dv">0</span>, <span class="op">-</span><span class="dv">1</span>], strategy, temperature, k<span class="op">=</span>k)</span>
+<span id="cb37-25"><a href="#cb37-25" aria-hidden="true" tabindex="-1"></a>        token_sequence <span class="op">+=</span> [token_pred.item()]</span>
+<span id="cb37-26"><a href="#cb37-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-27"><a href="#cb37-27" aria-hidden="true" tabindex="-1"></a>    new_token_sequence <span class="op">=</span> token_sequence[<span class="bu">len</span>(prompt_tokens) :]</span>
+<span id="cb37-28"><a href="#cb37-28" aria-hidden="true" tabindex="-1"></a>    new_token_sequence <span class="op">=</span> token_sequence[<span class="bu">len</span>(prompt_tokens) :]</span>
+<span id="cb37-29"><a href="#cb37-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> format_generated_words(tokenizer.tokens2text(new_token_sequence), prompt)</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p>Start with an untrained model as a reference point:</p>
+<div class="sourceCode" id="cb38"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">&quot;This is a classic horror and&quot;</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a><span class="co"># ==&gt; THIS IS A CLASSIC HORROR AND tsa tsa tsa wiimote wiimote upclose upclose upclose</span></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a><span class="co"># naturalism upfront upfront upfront 1930the punctuation indiscernible upfront upfront</span></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a><span class="co"># upfront upfront upfront upfront upfront granting whining nazarin certo certo certo</span></span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a><span class="co"># upfront perine perine centralized neurological neurological neurological crestfallen</span></span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a><span class="co"># crestfallen allfor neurological neurological neurological cassavetess perine perine</span></span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a><span class="co"># laughter laughter laughter laughter certo certo yorkavant yorkavant lacing lacing lacing</span></span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a><span class="co"># lacing allfor boredome yorkavant boredome yorkavant jobmore savannahs neurological</span></span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a><span class="co"># neurological lunchmeat badmen yorkavant yorkavant yorkavant thousands thousands thousands</span></span>
+<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a><span class="co"># thousands thousands yorkavant thousands thousands forego forego world 1930the 1930the</span></span>
+<span id="cb38-12"><a href="#cb38-12" aria-hidden="true" tabindex="-1"></a><span class="co"># 1930the 1930the 1930the 1930the world world thousands kinkle centralized centralized</span></span>
+<span id="cb38-13"><a href="#cb38-13" aria-hidden="true" tabindex="-1"></a><span class="co"># centralized earnings earnings earnings allyway allyway xian...</span></span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p>Then take a look at what a top-5 decoding strategy yields with the
+trained model:</p>
+<div class="sourceCode" id="cb39"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">&quot;This is a classic horror and&quot;</span></span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a><span class="co"># ==&gt; THIS IS A CLASSIC HORROR AND a good movie. If youre looking for a good laugh at it.</span></span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a><span class="co"># It is the worst movie ever made. I think it was not. It was a very good thing. Its a</span></span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a><span class="co"># shame that this film was made in a movie. The acting is good. The acting is good and the</span></span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a><span class="co"># only good thing about it. The movie is that I was really disappointed with this one. This</span></span>
+<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a><span class="co"># movie is so much of the movie. The acting is good. Its not good. I dont watch it was</span></span>
+<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a><span class="co"># terrible...</span></span></code></pre></div>
+</section></section>
 <section id="exciting-things-to-try-with-this-llm"
 class="title-slide slide level2">
 <h2>Exciting things to try with this LLM</h2>
