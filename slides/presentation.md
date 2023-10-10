@@ -12,13 +12,27 @@ This presentation is based on the codebase at [github.com/AlexIoannides/transfor
 
 I'm not going to assume you've worked through it, but if you have and there are questions you want to ask, then please do 🙂
 
---
+---
+
+The repo contains the source code for a Python package called `modelling`. This implements a generative transformer model and the tools to use it. Examples are contained in a series of notebooks.
+
+![](images/repo_layout.svg){width=60%}
+
+---
+
+The aim was to develop a platform for understanding how transformer models work, together with the (ML) engineering challenges that they pose.
+
+---
+
+This project made heavy use of the [PyTorch](https://pytorch.org/docs/stable/index.html) tensor computation framework and its ecosystem. If you want to learn how to use this, try starting with the [introduction on my personal website](https://alexioannides.com/notes-and-demos/pytorch/)
+
+![](images/intro_to_pytorch.png){width=50%}
 
 ## What I'm intending to talk about
 
 ::: incremental
 
-1. The problem we're trying to solve.
+1. The problem we're trying to solve
 2. How to compute multi-head attention.
 3. Transformers: encoders, decoders, and all that.
 4. How I developed a generative LLM.
@@ -31,7 +45,9 @@ I'm not going to assume you've worked through it, but if you have and there are 
 
 ---
 
-![](images/paradigm.png)
+Contemporary NLP according to Alex
+
+![](images/paradigm.png){width=60%}
 
 ___
 
@@ -182,7 +198,7 @@ ___
 
 "*Deep learning is like riding a bicycle - it's not something you prove the existence of, it's just something you do.*"
 
-\- Dr Alex Ioannides (ML Engineering Chapter Lead, Lloyd's Banking Group)
+\- Dr Alex Ioannides (MLE Chapter Lead, LBG)
 
 ___
 
@@ -465,7 +481,15 @@ print(f"y_batch_size = {y_batch.size()}")
 
 ### GPUs
 
-Basic approach - use the best available device for a given model. Note that sometimes `mps` is slower than `cpu` (until Apple get their act together).
+Models were trained using one of
+
+![Apple M1 Max](images/m1_max.png){width=15%}
+
+![p3.xlarge EC2 instance with NVIDIA V100 GPU](images/aws.png){width=15%}
+
+---
+
+My approach was to use the best available device for a given model. Note that sometimes `mps` is slower than `cpu` (until Apple get their act together).
 
 ```python
 from torch import device
@@ -489,13 +513,6 @@ def get_best_device(
         elif device_type == "cpu":
             return device("cpu")
 ```
-
----
-
-Models were trained using one of:
-
-- Apple M1 Max
-- AWS `p3.xlarge` EC2 instance with a single NVIDIA V100 Tensor Core GPU.
 
 ## RNN benchmark model
 
@@ -533,6 +550,22 @@ class NextWordPredictionRNN(Module):
         cell = zeros(1, batch_size, self._size_hidden, device=device_)
         return hidden, cell
 ```
+
+---
+
+Example output:
+
+```python
+dummy_token = torch.tensor([42])
+
+hidden_t0, cell_t0 = model.initialise(1, torch.device("cpu"))
+output_token_logit, hidden_t1, cell_t1 = model(dummy_token, hidden_t0, cell_t0)
+
+print(output_token_logit.size())
+# torch.Size([1, 69014])
+```
+
+Note → can only process one token at a time.
 
 ---
 
@@ -857,7 +890,7 @@ Define the model:
 class NextWordPredictionTransformer(Module):
     """Transformer for predicting the next tokens in a sequence."""
 
-    def __init__(self, size_vocab: int, size_embed: int, n_heads: int = 4):
+    def __init__(self, size_vocab: int, size_embed: int, n_heads: int = 1):
         super().__init__()
         self._size_vocab = size_vocab
         self._size_embed = size_embed
@@ -910,6 +943,21 @@ class NextWordPredictionTransformer(Module):
         padding_mask = x == PAD_TOKEN_IDX
         return causal_mask.to(x.device), padding_mask.to(x.device)
 ```
+
+---
+
+Example output:
+
+```python
+dummy_token_sequence = torch.tensor([[42, 42, 42]])
+
+output_seq_logits = model(dummy_token_sequence)
+
+print(output_seq_logits.size())
+# torch.Size([1, 3, 133046])
+```
+
+Note → can process entire sequences at once.
 
 ---
 
@@ -1169,17 +1217,183 @@ prompt = "This is a classic horror and"
 
 ## Exciting things to try with this LLM
 
-<!--
-- semantic search
-- sentiment classification
--->
+### Semantic Search
 
-## Conclusions (heavily opinionated)
+```python
+# Load our best model.
+pre_trained_model: tfr.NextWordPredictionTransformer = utils.load_model(MODEL_NAME)
 
-<!--
-- We have achieved full AutoNLP.
-- This is alchemy, not physics.
-- Emergent capabilities is probably a fallacy.
-- But it has been shown that deep learning can grok...
-- ... but for now probably just VERY useful stochastic parrots.
--->
+# Adapt model to aggregate decoder output sequence to a single vector with size EMBEDDING_DIM.
+class DocumentEmbeddingTransformer(tfr.NextWordPredictionTransformer):
+    """Adapting a generative model to yield text embeddings."""
+
+    def __init__(self, pre_trained_model: tfr.NextWordPredictionTransformer):
+        super().__init__(
+            pre_trained_model._size_vocab,
+            pre_trained_model._size_embed,
+            pre_trained_model._n_heads,
+        )
+        del self._linear
+        self.load_state_dict(pre_trained_model.state_dict(), strict=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_causal_mask, x_padding_mask = self._make_mask(x)
+        out = self._embedding(x) * math.sqrt(torch.tensor(self._size_embed))
+        out = self._position_encoder(out)
+        out = self._decoder(
+            out,
+            out,
+            tgt_mask=x_causal_mask,
+            tgt_key_padding_mask=x_padding_mask,
+            memory_mask=x_causal_mask,
+            memory_key_padding_mask=x_padding_mask,
+        )
+        out = torch.sum(out.squeeze(), dim=0)
+        out /= out.norm()
+        return out
+```
+
+---
+
+Use adapted pre-trained model to index documents:
+
+```python
+embeddings_db = []
+errors = []
+
+embedding_model.eval()
+with torch.no_grad():
+    for i, review in enumerate(reviews):
+        try:
+            review_tokenized = tokenizer(reviews[i])[:CHUNK_SIZE]
+            review_embedding = embedding_model(torch.tensor([review_tokenized]))
+            embeddings_db.append(review_embedding)
+        except Exception:
+            errors.append(str(i))
+
+if errors:
+    print(f"ERRORS: {', '.join(errors)}")
+
+embeddings_db = torch.stack(embeddings_db)
+```
+
+---
+
+Use cosine similarity to process queries:
+
+```python
+query = "Classic horror movie that is terrifying"
+
+# Embed the query using the model.
+query_embedding = embedding_model(torch.tensor([tokenizer(query)]))
+
+# Process the query.
+query_results = F.cosine_similarity(query_embedding, embeddings_db)
+
+# Examine results.
+top_hit = query_results.argsort(descending=True)[0]
+
+print(f"[review #{top_hit}; score = {query_results[top_hit]:.4f}]\n")
+# [review #17991; score = 0.7198]
+
+utils.print_wrapped(reviews[top_hit])
+# Halloween is not only the godfather of all slasher movies but the greatest horror movie
+# ever! John Carpenter and Debra Hill created the most suspenseful, creepy, and terrifying
+# movie of all time with this classic chiller. Michael Myers is such a phenomenal monster
+# in this movie that he inspired scores of imitators, such as Jason Vorhees (Friday the
+# 13th), The Miner (My Bloody Valentine), and Charlie Puckett (The Night Brings Charlie).
+# Okay, so I got a little obscure there, but it just goes to show you the impact that this
+# movie had on the entire horror genre.
+```
+
+### Sentiment Classification
+
+```python
+# Load our best model.
+pre_trained_model: tfr.NextWordPredictionTransformer = utils.load_model(MODEL_NAME)
+
+# Adapt model to aggregate decoder output sequence to a single vector with size EMBEDDING_DIM,
+# and pass this as features to a binary classification layer (logistic regression).
+class SentimentClassificationTransformer(tfr.NextWordPredictionTransformer):
+    """Adapting a generative model to yield text embeddings."""
+
+    def __init__(self, pre_trained_model: tfr.NextWordPredictionTransformer):
+        super().__init__(
+            pre_trained_model._size_vocab,
+            pre_trained_model._size_embed,
+            pre_trained_model._n_heads,
+        )
+        del self._linear
+        self.load_state_dict(pre_trained_model.state_dict(), strict=False)
+        self._logit = nn.Linear(pre_trained_model._size_embed, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_causal_mask, x_padding_mask = self._make_mask(x)
+        out = self._embedding(x) * math.sqrt(torch.tensor(self._size_embed))
+        out = self._position_encoder(out)
+        out = self._decoder(
+            out,
+            out,
+            tgt_mask=x_causal_mask,
+            tgt_key_padding_mask=x_padding_mask,
+            memory_mask=x_causal_mask,
+            memory_key_padding_mask=x_padding_mask,
+        )
+        out = torch.max(out, dim=1).values
+        out = F.sigmoid(self._logit(out))
+        return out
+```
+
+---
+
+Train the model:
+
+```python
+MAX_EPOCHS = 10
+BATCH_SIZE = 64
+MIN_SEQ_LEN = 10
+MAX_SEQ_LEN = 100
+MIN_WORD_FREQ = 2
+LEARNING_RATE = 0.0001
+```
+
+---
+
+![](images/clf_train_stats.png){width=50%}
+
+```text
+epoch 1 training loss = 0.5032: 100%|██████████| 666/666 [02:20<00:00,  4.75it/s]
+epoch 2 training loss = 0.3639: 100%|██████████| 666/666 [02:02<00:00,  5.42it/s]
+epoch 3 training loss = 0.3143: 100%|██████████| 666/666 [02:03<00:00,  5.41it/s]
+epoch 4 training loss = 0.2705: 100%|██████████| 666/666 [02:08<00:00,  5.16it/s]
+
+best model:
+|-- epoch: 3
+|-- validation loss: 0.3888
+```
+
+Note → training converged in under 10 minutes!
+
+---
+
+Now test the model:
+
+```python
+hits = torch.tensor(0.0)
+for x_batch, y_batch in test_dl:
+    y_pred = sentiment_cls(x_batch)
+    hits += torch.sum(y_pred.round() == y_batch)
+
+accuracy = hits.item() / (BATCH_SIZE * len(test_dl))
+print(f"accuracy = {accuracy:.1%}")
+# accuracy = 84.1%
+```
+
+## Conclusions
+
+::: incremental
+
+- We have achieved AutoNLP!
+- There is a lot of engineering involved.
+
+:::
