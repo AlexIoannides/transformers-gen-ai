@@ -6,10 +6,13 @@ date: October 12th, 2023
 
 ## The story of one man's mission not to get left behind in the dust
 
+---
 
-"*Don't let the little fuckers generation gap you.*"
+This presentation is based on the codebase at [github.com/AlexIoannides/transformer-gen-ai](https://github.com/AlexIoannides/transformers-gen-ai).
 
-\- William Gibson, Neuromancer
+I'm not going to assume you've worked through it, but if you have and there are questions you want to ask, then please do 🙂
+
+--
 
 ## What I'm intending to talk about
 
@@ -23,12 +26,6 @@ date: October 12th, 2023
 6. Conclusions (heavily opinionated).
 
 :::
-
-## Before we get started
-
-This presentation is based on the codebase at [github.com/AlexIoannides/transformer-gen-ai](https://github.com/AlexIoannides/transformers-gen-ai).
-
-I'm not going to assume you've worked through it, but if you have and there are questions you want to ask, then please do 🙂
 
 ## The problem we're trying to solve
 
