@@ -1317,7 +1317,11 @@ pre_trained_model: tfr.NextWordPredictionTransformer = utils.load_model(MODEL_NA
 class SentimentClassificationTransformer(tfr.NextWordPredictionTransformer):
     """Adapting a generative model to yield text embeddings."""
 
-    def __init__(self, pre_trained_model: tfr.NextWordPredictionTransformer):
+    def __init__(
+            self,
+            pre_trained_model: tfr.NextWordPredictionTransformer,
+            freeze_pre_trained: bool = True
+    ):
         super().__init__(
             pre_trained_model._size_vocab,
             pre_trained_model._size_embed,
@@ -1326,6 +1330,14 @@ class SentimentClassificationTransformer(tfr.NextWordPredictionTransformer):
         del self._linear
         self.load_state_dict(pre_trained_model.state_dict(), strict=False)
         self._logit = nn.Linear(pre_trained_model._size_embed, 1)
+
+        # Freeze pre-trained model layers.
+        if freeze_pre_trained:
+            for p in self._embedding.parameters():
+                p.requires_grad = False
+
+            for p in self._position_encoder.parameters():
+                p.requires_grad = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_causal_mask, x_padding_mask = self._make_mask(x)
@@ -1362,17 +1374,23 @@ LEARNING_RATE = 0.0001
 ![](images/clf_train_stats.png){width=50%}
 
 ```text
-epoch 1 training loss = 0.5032: 100%|██████████| 666/666 [02:20<00:00,  4.75it/s]
-epoch 2 training loss = 0.3639: 100%|██████████| 666/666 [02:02<00:00,  5.42it/s]
-epoch 3 training loss = 0.3143: 100%|██████████| 666/666 [02:03<00:00,  5.41it/s]
-epoch 4 training loss = 0.2705: 100%|██████████| 666/666 [02:08<00:00,  5.16it/s]
+epoch 1 training loss = 0.4990: 100%|██████████| 666/666 [01:55<00:00,  5.79it/s]
+epoch 2 training loss = 0.3885: 100%|██████████| 666/666 [01:36<00:00,  6.88it/s]
+epoch 3 training loss = 0.3720: 100%|██████████| 666/666 [01:39<00:00,  6.71it/s]
+epoch 4 training loss = 0.3598: 100%|██████████| 666/666 [01:37<00:00,  6.83it/s]
+epoch 5 training loss = 0.3489: 100%|██████████| 666/666 [01:40<00:00,  6.64it/s]
+epoch 6 training loss = 0.3366: 100%|██████████| 666/666 [01:39<00:00,  6.71it/s]
+epoch 7 training loss = 0.3281: 100%|██████████| 666/666 [01:37<00:00,  6.84it/s]
+epoch 8 training loss = 0.3177: 100%|██████████| 666/666 [01:37<00:00,  6.82it/s]
+epoch 9 training loss = 0.3062: 100%|██████████| 666/666 [01:39<00:00,  6.66it/s]
+epoch 10 training loss = 0.2988: 100%|██████████| 666/666 [01:36<00:00,  6.90it/s]
 
 best model:
-|-- epoch: 3
-|-- validation loss: 0.3888
+|-- epoch: 9
+|-- validation loss: 0.3843
 ```
 
-Note → training converged in under 10 minutes!
+Note → training converged in ~ 15 minutes!
 
 ---
 
@@ -1386,7 +1404,7 @@ for x_batch, y_batch in test_dl:
 
 accuracy = hits.item() / (BATCH_SIZE * len(test_dl))
 print(f"accuracy = {accuracy:.1%}")
-# accuracy = 83.8%
+# accuracy = 83.9%
 ```
 
 ## Conclusions
