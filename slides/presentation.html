@@ -137,6 +137,7 @@ notebooks.</p>
 <p>The aim was to develop a platform for understanding how transformer
 models work, together with the (ML) engineering challenges that they
 pose.</p>
+<p>This talk is the abridged version of this work.</p>
 </section>
 <section class="slide level3">
 
@@ -154,26 +155,24 @@ class="title-slide slide level2">
 <h2>What I’m intending to talk about</h2>
 <div>
 <ol type="1">
-<li class="fragment">The problem we’re trying to solve</li>
+<li class="fragment">The problem domain</li>
 <li class="fragment">How to compute multi-head attention.</li>
 <li class="fragment">Transformers: encoders, decoders, and all
 that.</li>
 <li class="fragment">How I developed a generative LLM.</li>
 <li class="fragment">Exciting things to try with this LLM.</li>
-<li class="fragment">Conclusions (heavily opinionated).</li>
 </ol>
 </div>
 </section>
 
 <section>
-<section id="the-problem-were-trying-to-solve"
-class="title-slide slide level2">
-<h2>The problem we’re trying to solve</h2>
+<section id="the-problem-domain" class="title-slide slide level2">
+<h2>The problem domain</h2>
 
 </section>
 <section class="slide level3">
 
-<p>Contemporary NLP according to Alex</p>
+<p>The state of applied NLP in 2023 (according to Alex)</p>
 <p><img data-src="images/paradigm.png" style="width:60.0%" /></p>
 </section>
 <section class="slide level3">
@@ -335,12 +334,6 @@ people completely insane.</em>”</p>
 <p>- <a href="https://argmin.substack.com/p/my-mathematical-mind">Ben
 Recht</a> (Prof. of Computer Sciences, UC Berkley)</p>
 </section>
-<section class="slide level3">
-
-<p>“<em>Deep learning is like riding a bicycle - it’s not something you
-prove the existence of, it’s just something you do.</em>”</p>
-<p>- Dr Alex Ioannides (MLE Chapter Lead, LBG)</p>
-</section>
 <section id="when-do-we-use-encoders-decoders-or-both"
 class="slide level3">
 <h3>When do we use encoders, decoders, or both?</h3>
@@ -358,17 +351,7 @@ sequence-to-sequence models.</li>
 <section id="how-i-developed-a-generative-llm"
 class="title-slide slide level2">
 <h2>How I developed a generative LLM</h2>
-<!--
-- the dataset
-- preparing the data - tokenisation
-- preparing the data - PyTorch DataLoaders
-- an aside on GPUs
-- benchmark - training an RNN.
-- using a generative model to generate text, given a prompt. 
-- training a transformer-decoder.
-    - positional encoding
-    - learning rate schedule
--->
+
 </section>
 <section id="the-data" class="slide level3">
 <h3>The data</h3>
@@ -415,108 +398,6 @@ like The Matrix, 12 Monkeys and The Cell into mind, which might not
 sound that appealing, but it truly is one of the best films i have
 seen.”</em></p>
 </section>
-<section id="generating-tokens" class="slide level3">
-<h3>Generating tokens</h3>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> IMDBTokenizer(_Tokenizer):</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Word to integer tokenization for use with any dataset or model.&quot;&quot;&quot;</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, reviews: <span class="bu">list</span>[<span class="bu">str</span>], min_word_freq: <span class="bu">int</span> <span class="op">=</span> <span class="dv">1</span>):</span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>        reviews_doc <span class="op">=</span> <span class="st">&quot; &quot;</span>.join(reviews)</span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>        token_counter <span class="op">=</span> Counter(<span class="va">self</span>._tokenize(reviews_doc))</span>
-<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>        token_freqs <span class="op">=</span> <span class="bu">sorted</span>(token_counter.items(), key<span class="op">=</span><span class="kw">lambda</span> e: e[<span class="dv">1</span>], reverse<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>        _vocab <span class="op">=</span> vocab(OrderedDict(token_freqs), min_freq<span class="op">=</span>min_word_freq)</span>
-<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        _vocab.insert_token(<span class="st">&quot;&lt;pad&gt;&quot;</span>, PAD_TOKEN_IDX)</span>
-<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>        _vocab.insert_token(<span class="st">&quot;&lt;unk&gt;&quot;</span>, UNKOWN_TOKEN_IDX)</span>
-<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>        _vocab.set_default_index(<span class="dv">1</span>)</span>
-<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.vocab <span class="op">=</span> _vocab</span>
-<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.vocab_size <span class="op">=</span> <span class="bu">len</span>(<span class="va">self</span>.vocab)</span>
-<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> text2tokens(<span class="va">self</span>, text: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">int</span>]:</span>
-<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.vocab(<span class="va">self</span>._tokenize(text))</span>
-<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> tokens2text(<span class="va">self</span>, tokens: <span class="bu">list</span>[<span class="bu">int</span>]) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
-<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> <span class="st">&quot; &quot;</span>.join(<span class="va">self</span>.vocab.lookup_tokens(tokens))</span>
-<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">rf&quot;\s</span><span class="sc">{</span>EOS_TOKEN<span class="sc">}</span><span class="vs">&quot;</span>, <span class="st">&quot;.&quot;</span>, text)</span>
-<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> text.strip()</span>
-<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>    <span class="at">@staticmethod</span></span>
-<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> _tokenize(text: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">str</span>]:</span>
-<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> IMDBTokenizer._standardise(text)</span>
-<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> (<span class="st">&quot;. &quot;</span>.join(sentence.strip() <span class="cf">for</span> sentence <span class="kw">in</span> text.split(<span class="st">&quot;.&quot;</span>))).strip()</span>
-<span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;\.&quot;</span>, <span class="ss">f&quot; </span><span class="sc">{</span>EOS_TOKEN<span class="sc">}</span><span class="ss"> &quot;</span>, text)</span>
-<span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;\s+&quot;</span>, <span class="st">&quot; &quot;</span>, text)</span>
-<span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> text.split()</span>
-<span id="cb5-30"><a href="#cb5-30" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-31"><a href="#cb5-31" aria-hidden="true" tabindex="-1"></a>    ...</span></code></pre></div>
-</section>
-<section class="slide level3">
-
-<div class="sourceCode" id="cb6"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> IMDBTokenizer(_Tokenizer):</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Word to integer tokenization for use with any dataset or model.&quot;&quot;&quot;</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    ...</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">@staticmethod</span></span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> _standardise(text: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
-<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Remove punctuation, HTML and make lower case.&quot;&quot;&quot;</span></span>
-<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> text.lower().strip()</span>
-<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> unidecode(text)</span>
-<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;&lt;[^&gt;]*&gt;&quot;</span>, <span class="st">&quot;&quot;</span>, text)</span>
-<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;mr.&quot;</span>, <span class="st">&quot;mr&quot;</span>, text)</span>
-<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;mrs.&quot;</span>, <span class="st">&quot;mrs&quot;</span>, text)</span>
-<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;ms.&quot;</span>, <span class="st">&quot;ms&quot;</span>, text)</span>
-<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;(\!|\?)&quot;</span>, <span class="st">&quot;.&quot;</span>, text)</span>
-<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;-&quot;</span>, <span class="st">&quot; &quot;</span>, text)</span>
-<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> <span class="st">&quot;&quot;</span>.join(</span>
-<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>            char <span class="cf">for</span> char <span class="kw">in</span> text <span class="cf">if</span> char <span class="kw">not</span> <span class="kw">in</span> <span class="st">&quot;</span><span class="ch">\&quot;</span><span class="st">#$%&amp;&#39;()*+,/:;&lt;=&gt;@[</span><span class="ch">\\</span><span class="st">]^_`{|}~&quot;</span></span>
-<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;\.+&quot;</span>, <span class="st">&quot;.&quot;</span>, text)</span>
-<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> text</span></code></pre></div>
-</section>
-<section class="slide level3">
-
-<p><code>IMDBTokenizer</code> in action</p>
-<div class="sourceCode" id="cb7"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>reviews <span class="op">=</span> data[<span class="st">&quot;review&quot;</span>].tolist()</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>review <span class="op">=</span> reviews[<span class="dv">0</span>]</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> IMDBTokenizer(reviews)</span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>tokenized_review <span class="op">=</span> tokenizer(review)</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>tokenised_review_decoded <span class="op">=</span> tokenizer.tokens2text(tokenized_review[:<span class="dv">10</span>])</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;ORIGINAL TEXT: </span><span class="sc">{</span>review[:<span class="dv">47</span>]<span class="sc">}</span><span class="ss"> ...&quot;</span>)</span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;TOKENS FROM TEXT: </span><span class="sc">{</span><span class="st">&#39;, &#39;</span><span class="sc">.</span>join(<span class="bu">str</span>(t) <span class="cf">for</span> t <span class="kw">in</span> tokenized_review[:<span class="dv">10</span>])<span class="sc">}</span><span class="ss"> ...&quot;</span>)</span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;TEXT FROM TOKENS: </span><span class="sc">{</span>tokenised_review_decoded<span class="sc">}</span><span class="ss"> ...&quot;</span>)</span>
-<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="co"># ORIGINAL TEXT: Forget what I said about Emeril. Rachael Ray is ...</span></span>
-<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="co"># TOKENS FROM TEXT: 831, 49, 11, 300, 44, 37877, 3, 10505, 1363, 8 ...</span></span>
-<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="co"># TEXT FROM TOKENS: forget what i said about emeril. rachael ray is ...</span></span></code></pre></div>
-<p>This is adequate for the current endeavor, but serious models use
-more sophisticated tokenisation algorithms, such as <a
-href="https://huggingface.co/learn/nlp-course/chapter6/5?fw=pt">Byte-Pair
-Encoding (BPE)</a>, which is one of the ‘secret ingredients’ of OpenAI’s
-GPT models.</p>
-</section>
-<section id="datasets-and-dataloaders" class="slide level3">
-<h3>Datasets and DataLoaders</h3>
-<p>We would benefit from standardized interface for delivering data to
-our models during training, which in this case requires two token
-sequences (offset by one as we are developing generative models).
-PyTorch provides such an interface:</p>
-<p><code>torch.utils.data.IterableDataset</code></p>
-<div class="sourceCode" id="cb8"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>tokenized_reviews <span class="op">=</span> [tokenizer(review) <span class="cf">for</span> review <span class="kw">in</span> reviews]</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>dataset <span class="op">=</span> FilmReviewSequences(tokenized_reviews)</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>x, y <span class="op">=</span> <span class="bu">next</span>(<span class="bu">iter</span>(dataset))</span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;x[:5]: </span><span class="sc">{</span>x[:<span class="dv">5</span>]<span class="sc">}</span><span class="ss">&quot;</span>)</span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;y[:5]: </span><span class="sc">{</span>y[:<span class="dv">5</span>]<span class="sc">}</span><span class="ss">&quot;</span>)</span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="co"># x[:5]: tensor([831,  49,  11, 300,  44])</span></span>
-<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="co"># y[:5]: tensor([   49,    11,   300,    44, 37877])</span></span></code></pre></div>
-</section>
 <section id="chunking" class="slide level3">
 <h3>Chunking</h3>
 <p>Most reviews are too long to be used as one input sequence and need
@@ -527,19 +408,123 @@ maximum sequence length.</p>
 <section class="slide level3">
 
 <p>Example with maximum sequence length of 30 words:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>full_text <span class="op">=</span> <span class="st">&quot;&quot;&quot;I&#39;ve seen things you people wouldn&#39;t believe. Attack ships on fire off</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="st">the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate.</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="st">All those moments will be lost in time, like tears in rain.&quot;&quot;&quot;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>chunk_one <span class="op">=</span> <span class="st">&quot;&quot;&quot;I&#39;ve seen things you people wouldn&#39;t believe. Attack ships on fire off</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="st">the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate.&quot;&quot;&quot;</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>chunk_three <span class="op">=</span> <span class="st">&quot;&quot;&quot;Attack ships on fire off the shoulder of Orion. I watched C-beams</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="st">glitter in the dark near the Tannhäuser Gate.&quot;&quot;&quot;</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>chunk_four <span class="op">=</span> <span class="st">&quot;&quot;&quot;I watched C-beams glitter in the dark near the Tannhäuser Gate. All</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="st">those moments will be lost in time, like tears in rain.&quot;&quot;&quot;</span></span></code></pre></div>
+</section>
+<section id="generating-tokens" class="slide level3">
+<h3>Generating tokens</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> IMDBTokenizer(_Tokenizer):</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Word to integer tokenization for use with any dataset or model.&quot;&quot;&quot;</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, reviews: <span class="bu">list</span>[<span class="bu">str</span>], min_word_freq: <span class="bu">int</span> <span class="op">=</span> <span class="dv">1</span>):</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>        reviews_doc <span class="op">=</span> <span class="st">&quot; &quot;</span>.join(reviews)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        token_counter <span class="op">=</span> Counter(<span class="va">self</span>._tokenize(reviews_doc))</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>        token_freqs <span class="op">=</span> <span class="bu">sorted</span>(token_counter.items(), key<span class="op">=</span><span class="kw">lambda</span> e: e[<span class="dv">1</span>], reverse<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        _vocab <span class="op">=</span> vocab(OrderedDict(token_freqs), min_freq<span class="op">=</span>min_word_freq)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>        _vocab.insert_token(<span class="st">&quot;&lt;pad&gt;&quot;</span>, PAD_TOKEN_IDX)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>        _vocab.insert_token(<span class="st">&quot;&lt;unk&gt;&quot;</span>, UNKOWN_TOKEN_IDX)</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>        _vocab.set_default_index(<span class="dv">1</span>)</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.vocab <span class="op">=</span> _vocab</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.vocab_size <span class="op">=</span> <span class="bu">len</span>(<span class="va">self</span>.vocab)</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> text2tokens(<span class="va">self</span>, text: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">int</span>]:</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.vocab(<span class="va">self</span>._tokenize(text))</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> tokens2text(<span class="va">self</span>, tokens: <span class="bu">list</span>[<span class="bu">int</span>]) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> <span class="st">&quot; &quot;</span>.join(<span class="va">self</span>.vocab.lookup_tokens(tokens))</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">rf&quot;\s</span><span class="sc">{</span>EOS_TOKEN<span class="sc">}</span><span class="vs">&quot;</span>, <span class="st">&quot;.&quot;</span>, text)</span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> text.strip()</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>    <span class="at">@staticmethod</span></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> _tokenize(text: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">str</span>]:</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> IMDBTokenizer._standardise(text)</span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> (<span class="st">&quot;. &quot;</span>.join(sentence.strip() <span class="cf">for</span> sentence <span class="kw">in</span> text.split(<span class="st">&quot;.&quot;</span>))).strip()</span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;\.&quot;</span>, <span class="ss">f&quot; </span><span class="sc">{</span>EOS_TOKEN<span class="sc">}</span><span class="ss"> &quot;</span>, text)</span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;\s+&quot;</span>, <span class="st">&quot; &quot;</span>, text)</span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> text.split()</span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a>    ...</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> IMDBTokenizer(_Tokenizer):</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Word to integer tokenization for use with any dataset or model.&quot;&quot;&quot;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">@staticmethod</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> _standardise(text: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Remove punctuation, HTML and make lower case.&quot;&quot;&quot;</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> text.lower().strip()</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> unidecode(text)</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;&lt;[^&gt;]*&gt;&quot;</span>, <span class="st">&quot;&quot;</span>, text)</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;mr.&quot;</span>, <span class="st">&quot;mr&quot;</span>, text)</span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;mrs.&quot;</span>, <span class="st">&quot;mrs&quot;</span>, text)</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;ms.&quot;</span>, <span class="st">&quot;ms&quot;</span>, text)</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;(\!|\?)&quot;</span>, <span class="st">&quot;.&quot;</span>, text)</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;-&quot;</span>, <span class="st">&quot; &quot;</span>, text)</span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> <span class="st">&quot;&quot;</span>.join(</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>            char <span class="cf">for</span> char <span class="kw">in</span> text <span class="cf">if</span> char <span class="kw">not</span> <span class="kw">in</span> <span class="st">&quot;</span><span class="ch">\&quot;</span><span class="st">#$%&amp;&#39;()*+,/:;&lt;=&gt;@[</span><span class="ch">\\</span><span class="st">]^_`{|}~&quot;</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> re.sub(<span class="vs">r&quot;\.+&quot;</span>, <span class="st">&quot;.&quot;</span>, text)</span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> text</span></code></pre></div>
+</section>
+<section class="slide level3">
+
+<p><code>IMDBTokenizer</code> in action</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>reviews <span class="op">=</span> data[<span class="st">&quot;review&quot;</span>].tolist()</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>review <span class="op">=</span> reviews[<span class="dv">0</span>]</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> IMDBTokenizer(reviews)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>tokenized_review <span class="op">=</span> tokenizer(review)</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>tokenised_review_decoded <span class="op">=</span> tokenizer.tokens2text(tokenized_review[:<span class="dv">10</span>])</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;ORIGINAL TEXT: </span><span class="sc">{</span>review[:<span class="dv">47</span>]<span class="sc">}</span><span class="ss"> ...&quot;</span>)</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;TOKENS FROM TEXT: </span><span class="sc">{</span><span class="st">&#39;, &#39;</span><span class="sc">.</span>join(<span class="bu">str</span>(t) <span class="cf">for</span> t <span class="kw">in</span> tokenized_review[:<span class="dv">10</span>])<span class="sc">}</span><span class="ss"> ...&quot;</span>)</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;TEXT FROM TOKENS: </span><span class="sc">{</span>tokenised_review_decoded<span class="sc">}</span><span class="ss"> ...&quot;</span>)</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="co"># ORIGINAL TEXT: Forget what I said about Emeril. Rachael Ray is ...</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="co"># TOKENS FROM TEXT: 831, 49, 11, 300, 44, 37877, 3, 10505, 1363, 8 ...</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="co"># TEXT FROM TOKENS: forget what i said about emeril. rachael ray is ...</span></span></code></pre></div>
+<p>This is adequate for the current endeavor, but serious models use
+more sophisticated tokenisation algorithms, such as <a
+href="https://huggingface.co/learn/nlp-course/chapter6/5?fw=pt">Byte-Pair
+Encoding (BPE)</a>, which is one of the ‘secret ingredients’ of OpenAI’s
+GPT models.</p>
+</section>
+<section id="datasets-and-dataloaders" class="slide level3">
+<h3>Datasets and DataLoaders</h3>
+<p>PyTorch provides a framework for composing portable data pipelines
+that can be used with any model.</p>
+<p><code>torch.utils.data.Dataset</code>
+<code>torch.utils.data.IterableDataset</code>
+<code>torch.utils.data.DataLoader</code></p>
+<p>Our pipeline delivers pairs of token sequences with an offset of one
+token between them.</p>
 <div class="sourceCode" id="cb9"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>full_text <span class="op">=</span> <span class="st">&quot;&quot;&quot;I&#39;ve seen things you people wouldn&#39;t believe. Attack ships on fire off</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="st">the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate.</span></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="st">All those moments will be lost in time, like tears in rain.&quot;&quot;&quot;</span></span>
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>tokenized_reviews <span class="op">=</span> [tokenizer(review) <span class="cf">for</span> review <span class="kw">in</span> reviews]</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>dataset <span class="op">=</span> FilmReviewSequences(tokenized_reviews)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>x, y <span class="op">=</span> <span class="bu">next</span>(<span class="bu">iter</span>(dataset))</span>
 <span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>chunk_one <span class="op">=</span> <span class="st">&quot;&quot;&quot;I&#39;ve seen things you people wouldn&#39;t believe. Attack ships on fire off</span></span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="st">the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate.&quot;&quot;&quot;</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;x[:5]: </span><span class="sc">{</span>x[:<span class="dv">5</span>]<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;y[:5]: </span><span class="sc">{</span>y[:<span class="dv">5</span>]<span class="sc">}</span><span class="ss">&quot;</span>)</span>
 <span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>chunk_three <span class="op">=</span> <span class="st">&quot;&quot;&quot;Attack ships on fire off the shoulder of Orion. I watched C-beams</span></span>
-<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="st">glitter in the dark near the Tannhäuser Gate.&quot;&quot;&quot;</span></span>
-<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>chunk_four <span class="op">=</span> <span class="st">&quot;&quot;&quot;I watched C-beams glitter in the dark near the Tannhäuser Gate. All</span></span>
-<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="st">those moments will be lost in time, like tears in rain.&quot;&quot;&quot;</span></span></code></pre></div>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="co"># x[:5]: tensor([831,  49,  11, 300,  44])</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co"># y[:5]: tensor([   49,    11,   300,    44, 37877])</span></span></code></pre></div>
 </section>
 <section class="slide level3">
 
@@ -713,7 +698,7 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb15-1"><a h
 </section>
 <section class="slide level3">
 
-<p>Define the training routine:</p>
+<p>Define a single training step:</p>
 <div class="sourceCode" id="cb16"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _train_step(</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    x_batch: Tensor,</span>
@@ -741,6 +726,7 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb16-1"><a h
 </section>
 <section class="slide level3">
 
+<p>Define a single validation step:</p>
 <div class="sourceCode" id="cb17"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="at">@no_grad</span>()</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _val_step(</span>
@@ -765,6 +751,7 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb17-1"><a h
 </section>
 <section class="slide level3">
 
+<p>Define the full training routine:</p>
 <div class="sourceCode" id="cb18"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train(</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    model: Module,</span>
@@ -1007,6 +994,8 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb27-1"><a h
 <span id="cb27-20"><a href="#cb27-20" aria-hidden="true" tabindex="-1"></a>        seq_len <span class="op">=</span> x.size(<span class="dv">1</span>)</span>
 <span id="cb27-21"><a href="#cb27-21" aria-hidden="true" tabindex="-1"></a>        x <span class="op">=</span> x <span class="op">+</span> <span class="va">self</span>._pos_encoding[:seq_len]</span>
 <span id="cb27-22"><a href="#cb27-22" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>._dropout(x)</span></code></pre></div>
+<p>Analagous to adding a watermark to each embedded token, to indicate
+its position in the sequence.</p>
 </section>
 <section class="slide level3">
 
@@ -1076,12 +1065,12 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb30-1"><a h
 <span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>output_seq_logits <span class="op">=</span> model(dummy_token_sequence)</span>
 <span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(output_seq_logits.size())</span>
-<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a><span class="co"># torch.Size([1, 3, 133046])</span></span></code></pre></div>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a><span class="co"># torch.Size([1, 3, 69014])</span></span></code></pre></div>
 <p>Note → can process entire sequences at once.</p>
 </section>
 <section class="slide level3">
 
-<p>Define the training routine:</p>
+<p>Define a single training step:</p>
 <div class="sourceCode" id="cb31"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _train_step(</span>
 <span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    x_batch: Tensor,</span>
@@ -1108,6 +1097,7 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb31-1"><a h
 </section>
 <section class="slide level3">
 
+<p>Define a single validation step:</p>
 <div class="sourceCode" id="cb32"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="at">@no_grad</span>()</span>
 <span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _val_step(</span>
@@ -1124,6 +1114,7 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb32-1"><a h
 </section>
 <section class="slide level3">
 
+<p>Set a learning rate schedule:</p>
 <p><img data-src="images/lr_schedule.png" /></p>
 <div class="sourceCode" id="cb33"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> warmup_schedule(step: <span class="bu">int</span>, warmup_steps: <span class="bu">int</span>, max_steps: <span class="bu">int</span>):</span>
@@ -1135,6 +1126,7 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb33-1"><a h
 </section>
 <section class="slide level3">
 
+<p>Define the full training routine:</p>
 <div class="sourceCode" id="cb34"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train(</span>
 <span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    model: Module,</span>
@@ -1226,14 +1218,14 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb36-1"><a h
 
 <p>Train the model:</p>
 <div class="sourceCode" id="cb37"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Hyper-parameters that lead to a model with 406,306 parameters.</span></span>
+class="sourceCode python"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Hyper-parameters that lead to a model with 214,210 parameters.</span></span>
 <span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>SIZE_EMBED <span class="op">=</span> <span class="dv">256</span></span>
 <span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>MAX_EPOCHS <span class="op">=</span> <span class="dv">30</span></span>
 <span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>BATCH_SIZE <span class="op">=</span> <span class="dv">32</span></span>
 <span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>MAX_SEQ_LEN <span class="op">=</span> <span class="dv">100</span></span>
 <span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>MIN_SEQ_LEN <span class="op">=</span> <span class="dv">10</span></span>
-<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>MIN_WORD_FREQ <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>MIN_WORD_FREQ <span class="op">=</span> <span class="dv">2</span></span>
 <span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>MAX_LEARNING_RATE <span class="op">=</span> <span class="fl">0.001</span></span>
 <span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a>WARMUP_EPOCHS <span class="op">=</span> <span class="dv">2</span></span>
 <span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>GRADIENT_CLIP <span class="op">=</span> <span class="dv">5</span></span></code></pre></div>
@@ -1243,15 +1235,15 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb37-1"><a h
 <p><img data-src="images/decoder_train_stats.png"
 style="width:50.0%" /></p>
 <pre class="text"><code>number of warmup steps: 33692 / 505380
-epoch 1 training loss = 6.0603 (LR = 0.00049863): 100%|██████████| 16846/16846 [1:40:23&lt;00:00,  2.80it/s]
-epoch 2 training loss = 5.2419 (LR = 0.00098907): 100%|██████████| 16846/16846 [1:40:26&lt;00:00,  2.80it/s]
-epoch 3 training loss = 5.0985 (LR = 0.00097553): 100%|██████████| 16846/16846 [1:40:29&lt;00:00,  2.79it/s]
-epoch 4 training loss = 4.9940 (LR = 0.00095677): 100%|██████████| 16846/16846 [1:40:31&lt;00:00,  2.79it/s]
-epoch 5 training loss = 4.9635 (LR = 0.00093301): 100%|██████████| 16846/16846 [1:40:30&lt;00:00,  2.79it/s]
+epoch 1 training loss = 5.9463 (LR = 0.00049863): 100%|██████████| 16846/16846 [51:35&lt;00:00,  5.44it/s]
+epoch 2 training loss = 5.1662 (LR = 0.00098907): 100%|██████████| 16846/16846 [51:32&lt;00:00,  5.45it/s]
+epoch 3 training loss = 5.0460 (LR = 0.00097553): 100%|██████████| 16846/16846 [51:32&lt;00:00,  5.45it/s]
+epoch 4 training loss = 4.9569 (LR = 0.00095677): 100%|██████████| 16846/16846 [51:32&lt;00:00,  5.45it/s]
+epoch 5 training loss = 4.9277 (LR = 0.00093301): 100%|██████████| 16846/16846 [51:33&lt;00:00,  5.45it/s]
 
 best model:
 |-- epoch: 3
-|-- validation loss: 5.1783</code></pre>
+|-- validation loss: 5.0740</code></pre>
 </section>
 <section id="generating-text-from-the-decoder-model"
 class="slide level3">
@@ -1312,12 +1304,12 @@ trained model:</p>
 <div class="sourceCode" id="cb41"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">&quot;This is a classic horror and&quot;</span></span>
 <span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a><span class="co"># ==&gt; THIS IS A CLASSIC HORROR AND a good movie. If youre looking for a good laugh at it.</span></span>
-<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a><span class="co"># It is the worst movie ever made. I think it was not. It was a very good thing. Its a</span></span>
-<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a><span class="co"># shame that this film was made in a movie. The acting is good. The acting is good and the</span></span>
-<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a><span class="co"># only good thing about it. The movie is that I was really disappointed with this one. This</span></span>
-<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a><span class="co"># movie is so much of the movie. The acting is good. Its not good. I dont watch it was</span></span>
-<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a><span class="co"># terrible...</span></span></code></pre></div>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a><span class="co"># ==&gt; THIS IS A CLASSIC HORROR AND a good story with the great cast. Its a shame that the</span></span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a><span class="co"># story has been a bit of one night of my favourite actors. This is an amazing and it was</span></span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a><span class="co"># very good for the film to watch but it has a few decent moments that is not even the best</span></span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a><span class="co"># part in the entire film but this one was a good movie for a little long after all of it</span></span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a><span class="co"># it is so much more about this. If you havent already see a lot to see it. I dont. It is.</span></span>
+<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a><span class="co"># I recommend...</span></span></code></pre></div>
 </section></section>
 <section>
 <section id="exciting-things-to-try-with-this-llm"
@@ -1328,59 +1320,48 @@ class="title-slide slide level2">
 <section id="semantic-search" class="slide level3">
 <h3>Semantic Search</h3>
 <div class="sourceCode" id="cb42"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Load our best model.</span></span>
-<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>pre_trained_model: tfr.NextWordPredictionTransformer <span class="op">=</span> utils.load_model(MODEL_NAME)</span>
+class="sourceCode python"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DocumentEmbeddingTransformer(tfr.NextWordPredictionTransformer):</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Adapting a generative model to yield text embeddings.&quot;&quot;&quot;</span></span>
 <span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Adapt model to aggregate decoder output sequence to a single vector with size EMBEDDING_DIM.</span></span>
-<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DocumentEmbeddingTransformer(tfr.NextWordPredictionTransformer):</span>
-<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Adapting a generative model to yield text embeddings.&quot;&quot;&quot;</span></span>
-<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, pre_trained_model: tfr.NextWordPredictionTransformer):</span>
-<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a>        <span class="bu">super</span>().<span class="fu">__init__</span>(</span>
-<span id="cb42-10"><a href="#cb42-10" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._size_vocab,</span>
-<span id="cb42-11"><a href="#cb42-11" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._size_embed,</span>
-<span id="cb42-12"><a href="#cb42-12" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._n_heads,</span>
-<span id="cb42-13"><a href="#cb42-13" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb42-14"><a href="#cb42-14" aria-hidden="true" tabindex="-1"></a>        <span class="kw">del</span> <span class="va">self</span>._linear</span>
-<span id="cb42-15"><a href="#cb42-15" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.load_state_dict(pre_trained_model.state_dict(), strict<span class="op">=</span><span class="va">False</span>)</span>
-<span id="cb42-16"><a href="#cb42-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb42-17"><a href="#cb42-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> forward(<span class="va">self</span>, x: torch.Tensor) <span class="op">-&gt;</span> torch.Tensor:</span>
-<span id="cb42-18"><a href="#cb42-18" aria-hidden="true" tabindex="-1"></a>        x_causal_mask, x_padding_mask <span class="op">=</span> <span class="va">self</span>._make_mask(x)</span>
-<span id="cb42-19"><a href="#cb42-19" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._embedding(x) <span class="op">*</span> math.sqrt(torch.tensor(<span class="va">self</span>._size_embed))</span>
-<span id="cb42-20"><a href="#cb42-20" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._position_encoder(out)</span>
-<span id="cb42-21"><a href="#cb42-21" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._decoder(</span>
-<span id="cb42-22"><a href="#cb42-22" aria-hidden="true" tabindex="-1"></a>            out,</span>
-<span id="cb42-23"><a href="#cb42-23" aria-hidden="true" tabindex="-1"></a>            out,</span>
-<span id="cb42-24"><a href="#cb42-24" aria-hidden="true" tabindex="-1"></a>            tgt_mask<span class="op">=</span>x_causal_mask,</span>
-<span id="cb42-25"><a href="#cb42-25" aria-hidden="true" tabindex="-1"></a>            tgt_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
-<span id="cb42-26"><a href="#cb42-26" aria-hidden="true" tabindex="-1"></a>            memory_mask<span class="op">=</span>x_causal_mask,</span>
-<span id="cb42-27"><a href="#cb42-27" aria-hidden="true" tabindex="-1"></a>            memory_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
-<span id="cb42-28"><a href="#cb42-28" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb42-29"><a href="#cb42-29" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> torch.<span class="bu">sum</span>(out.squeeze(), dim<span class="op">=</span><span class="dv">0</span>)</span>
-<span id="cb42-30"><a href="#cb42-30" aria-hidden="true" tabindex="-1"></a>        out <span class="op">/=</span> out.norm()</span>
-<span id="cb42-31"><a href="#cb42-31" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> out</span></code></pre></div>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, pre_trained_model: tfr.NextWordPredictionTransformer):</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">super</span>().<span class="fu">__init__</span>(</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._size_vocab,</span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._size_embed,</span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._n_heads,</span>
+<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb42-10"><a href="#cb42-10" aria-hidden="true" tabindex="-1"></a>        <span class="kw">del</span> <span class="va">self</span>._linear</span>
+<span id="cb42-11"><a href="#cb42-11" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.load_state_dict(pre_trained_model.state_dict(), strict<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb42-12"><a href="#cb42-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-13"><a href="#cb42-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> forward(<span class="va">self</span>, x: torch.Tensor) <span class="op">-&gt;</span> torch.Tensor:</span>
+<span id="cb42-14"><a href="#cb42-14" aria-hidden="true" tabindex="-1"></a>        x_causal_mask, x_padding_mask <span class="op">=</span> <span class="va">self</span>._make_mask(x)</span>
+<span id="cb42-15"><a href="#cb42-15" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._embedding(x) <span class="op">*</span> math.sqrt(torch.tensor(<span class="va">self</span>._size_embed))</span>
+<span id="cb42-16"><a href="#cb42-16" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._position_encoder(out)</span>
+<span id="cb42-17"><a href="#cb42-17" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._decoder(</span>
+<span id="cb42-18"><a href="#cb42-18" aria-hidden="true" tabindex="-1"></a>            out,</span>
+<span id="cb42-19"><a href="#cb42-19" aria-hidden="true" tabindex="-1"></a>            out,</span>
+<span id="cb42-20"><a href="#cb42-20" aria-hidden="true" tabindex="-1"></a>            tgt_mask<span class="op">=</span>x_causal_mask,</span>
+<span id="cb42-21"><a href="#cb42-21" aria-hidden="true" tabindex="-1"></a>            tgt_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
+<span id="cb42-22"><a href="#cb42-22" aria-hidden="true" tabindex="-1"></a>            memory_mask<span class="op">=</span>x_causal_mask,</span>
+<span id="cb42-23"><a href="#cb42-23" aria-hidden="true" tabindex="-1"></a>            memory_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
+<span id="cb42-24"><a href="#cb42-24" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb42-25"><a href="#cb42-25" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> torch.<span class="bu">sum</span>(out.squeeze(), dim<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb42-26"><a href="#cb42-26" aria-hidden="true" tabindex="-1"></a>        out <span class="op">/=</span> out.norm()</span>
+<span id="cb42-27"><a href="#cb42-27" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> out</span></code></pre></div>
 </section>
 <section class="slide level3">
 
 <p>Use adapted pre-trained model to index documents:</p>
 <div class="sourceCode" id="cb43"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>embeddings_db <span class="op">=</span> []</span>
-<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>errors <span class="op">=</span> []</span>
-<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>embedding_model.<span class="bu">eval</span>()</span>
-<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.no_grad():</span>
-<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, review <span class="kw">in</span> <span class="bu">enumerate</span>(reviews):</span>
-<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">try</span>:</span>
-<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>            review_tokenized <span class="op">=</span> tokenizer(reviews[i])[:CHUNK_SIZE]</span>
-<span id="cb43-9"><a href="#cb43-9" aria-hidden="true" tabindex="-1"></a>            review_embedding <span class="op">=</span> embedding_model(torch.tensor([review_tokenized]))</span>
-<span id="cb43-10"><a href="#cb43-10" aria-hidden="true" tabindex="-1"></a>            embeddings_db.append(review_embedding)</span>
-<span id="cb43-11"><a href="#cb43-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">except</span> <span class="pp">Exception</span>:</span>
-<span id="cb43-12"><a href="#cb43-12" aria-hidden="true" tabindex="-1"></a>            errors.append(<span class="bu">str</span>(i))</span>
-<span id="cb43-13"><a href="#cb43-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb43-14"><a href="#cb43-14" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> errors:</span>
-<span id="cb43-15"><a href="#cb43-15" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;ERRORS: </span><span class="sc">{</span><span class="st">&#39;, &#39;</span><span class="sc">.</span>join(errors)<span class="sc">}</span><span class="ss">&quot;</span>)</span>
-<span id="cb43-16"><a href="#cb43-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb43-17"><a href="#cb43-17" aria-hidden="true" tabindex="-1"></a>embeddings_db <span class="op">=</span> torch.stack(embeddings_db)</span></code></pre></div>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>embedding_model.<span class="bu">eval</span>()</span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.no_grad():</span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, review <span class="kw">in</span> <span class="bu">enumerate</span>(reviews):</span>
+<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>        review_tokenized <span class="op">=</span> tokenizer(reviews[i])[:CHUNK_SIZE]</span>
+<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>        review_embedding <span class="op">=</span> embedding_model(torch.tensor([review_tokenized]))</span>
+<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>        embeddings_db.append(review_embedding)</span>
+<span id="cb43-9"><a href="#cb43-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-10"><a href="#cb43-10" aria-hidden="true" tabindex="-1"></a>embeddings_db <span class="op">=</span> torch.stack(embeddings_db)</span></code></pre></div>
 </section>
 <section class="slide level3">
 
@@ -1412,39 +1393,41 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb44-1"><a h
 <section id="sentiment-classification" class="slide level3">
 <h3>Sentiment Classification</h3>
 <div class="sourceCode" id="cb45"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Load our best model.</span></span>
-<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>pre_trained_model: tfr.NextWordPredictionTransformer <span class="op">=</span> utils.load_model(MODEL_NAME)</span>
+class="sourceCode python"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> SentimentClassificationTransformer(tfr.NextWordPredictionTransformer):</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Adapting a generative model to yield text embeddings.&quot;&quot;&quot;</span></span>
 <span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Adapt model to aggregate decoder output sequence to a single vector with size EMBEDDING_DIM,</span></span>
-<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a><span class="co"># and pass this as features to a binary classification layer (logistic regression).</span></span>
-<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> SentimentClassificationTransformer(tfr.NextWordPredictionTransformer):</span>
-<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Adapting a generative model to yield text embeddings.&quot;&quot;&quot;</span></span>
-<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb45-9"><a href="#cb45-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, pre_trained_model: tfr.NextWordPredictionTransformer):</span>
-<span id="cb45-10"><a href="#cb45-10" aria-hidden="true" tabindex="-1"></a>        <span class="bu">super</span>().<span class="fu">__init__</span>(</span>
-<span id="cb45-11"><a href="#cb45-11" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._size_vocab,</span>
-<span id="cb45-12"><a href="#cb45-12" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._size_embed,</span>
-<span id="cb45-13"><a href="#cb45-13" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._n_heads,</span>
-<span id="cb45-14"><a href="#cb45-14" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb45-15"><a href="#cb45-15" aria-hidden="true" tabindex="-1"></a>        <span class="kw">del</span> <span class="va">self</span>._linear</span>
-<span id="cb45-16"><a href="#cb45-16" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.load_state_dict(pre_trained_model.state_dict(), strict<span class="op">=</span><span class="va">False</span>)</span>
-<span id="cb45-17"><a href="#cb45-17" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._logit <span class="op">=</span> nn.Linear(pre_trained_model._size_embed, <span class="dv">1</span>)</span>
-<span id="cb45-18"><a href="#cb45-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb45-19"><a href="#cb45-19" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> forward(<span class="va">self</span>, x: torch.Tensor) <span class="op">-&gt;</span> torch.Tensor:</span>
-<span id="cb45-20"><a href="#cb45-20" aria-hidden="true" tabindex="-1"></a>        x_causal_mask, x_padding_mask <span class="op">=</span> <span class="va">self</span>._make_mask(x)</span>
-<span id="cb45-21"><a href="#cb45-21" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._embedding(x) <span class="op">*</span> math.sqrt(torch.tensor(<span class="va">self</span>._size_embed))</span>
-<span id="cb45-22"><a href="#cb45-22" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._position_encoder(out)</span>
-<span id="cb45-23"><a href="#cb45-23" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._decoder(</span>
-<span id="cb45-24"><a href="#cb45-24" aria-hidden="true" tabindex="-1"></a>            out,</span>
-<span id="cb45-25"><a href="#cb45-25" aria-hidden="true" tabindex="-1"></a>            out,</span>
-<span id="cb45-26"><a href="#cb45-26" aria-hidden="true" tabindex="-1"></a>            tgt_mask<span class="op">=</span>x_causal_mask,</span>
-<span id="cb45-27"><a href="#cb45-27" aria-hidden="true" tabindex="-1"></a>            tgt_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
-<span id="cb45-28"><a href="#cb45-28" aria-hidden="true" tabindex="-1"></a>            memory_mask<span class="op">=</span>x_causal_mask,</span>
-<span id="cb45-29"><a href="#cb45-29" aria-hidden="true" tabindex="-1"></a>            memory_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
-<span id="cb45-30"><a href="#cb45-30" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb45-31"><a href="#cb45-31" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> torch.<span class="bu">max</span>(out, dim<span class="op">=</span><span class="dv">1</span>).values</span>
-<span id="cb45-32"><a href="#cb45-32" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> F.sigmoid(<span class="va">self</span>._logit(out))</span>
-<span id="cb45-33"><a href="#cb45-33" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> out</span></code></pre></div>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(</span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>,</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a>            pre_trained_model: tfr.NextWordPredictionTransformer,</span>
+<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>            freeze_pre_trained: <span class="bu">bool</span> <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a>    ):</span>
+<span id="cb45-9"><a href="#cb45-9" aria-hidden="true" tabindex="-1"></a>        <span class="bu">super</span>().<span class="fu">__init__</span>(</span>
+<span id="cb45-10"><a href="#cb45-10" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._size_vocab,</span>
+<span id="cb45-11"><a href="#cb45-11" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._size_embed,</span>
+<span id="cb45-12"><a href="#cb45-12" aria-hidden="true" tabindex="-1"></a>            pre_trained_model._n_heads,</span>
+<span id="cb45-13"><a href="#cb45-13" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb45-14"><a href="#cb45-14" aria-hidden="true" tabindex="-1"></a>        <span class="kw">del</span> <span class="va">self</span>._linear</span>
+<span id="cb45-15"><a href="#cb45-15" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.load_state_dict(pre_trained_model.state_dict(), strict<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb45-16"><a href="#cb45-16" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._logit <span class="op">=</span> nn.Linear(pre_trained_model._size_embed, <span class="dv">1</span>)</span>
+<span id="cb45-17"><a href="#cb45-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb45-18"><a href="#cb45-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> freeze_pre_trained:</span>
+<span id="cb45-19"><a href="#cb45-19" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> p <span class="kw">in</span> chain(<span class="va">self</span>._embedding.parameters(), <span class="va">self</span>._decoder.parameters()):</span>
+<span id="cb45-20"><a href="#cb45-20" aria-hidden="true" tabindex="-1"></a>                p.requires_grad <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb45-21"><a href="#cb45-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb45-22"><a href="#cb45-22" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> forward(<span class="va">self</span>, x: torch.Tensor) <span class="op">-&gt;</span> torch.Tensor:</span>
+<span id="cb45-23"><a href="#cb45-23" aria-hidden="true" tabindex="-1"></a>        x_causal_mask, x_padding_mask <span class="op">=</span> <span class="va">self</span>._make_mask(x)</span>
+<span id="cb45-24"><a href="#cb45-24" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._embedding(x) <span class="op">*</span> math.sqrt(torch.tensor(<span class="va">self</span>._size_embed))</span>
+<span id="cb45-25"><a href="#cb45-25" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._position_encoder(out)</span>
+<span id="cb45-26"><a href="#cb45-26" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> <span class="va">self</span>._decoder(</span>
+<span id="cb45-27"><a href="#cb45-27" aria-hidden="true" tabindex="-1"></a>            out,</span>
+<span id="cb45-28"><a href="#cb45-28" aria-hidden="true" tabindex="-1"></a>            out,</span>
+<span id="cb45-29"><a href="#cb45-29" aria-hidden="true" tabindex="-1"></a>            tgt_mask<span class="op">=</span>x_causal_mask,</span>
+<span id="cb45-30"><a href="#cb45-30" aria-hidden="true" tabindex="-1"></a>            tgt_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
+<span id="cb45-31"><a href="#cb45-31" aria-hidden="true" tabindex="-1"></a>            memory_mask<span class="op">=</span>x_causal_mask,</span>
+<span id="cb45-32"><a href="#cb45-32" aria-hidden="true" tabindex="-1"></a>            memory_key_padding_mask<span class="op">=</span>x_padding_mask,</span>
+<span id="cb45-33"><a href="#cb45-33" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb45-34"><a href="#cb45-34" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> torch.<span class="bu">max</span>(out, dim<span class="op">=</span><span class="dv">1</span>).values</span>
+<span id="cb45-35"><a href="#cb45-35" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> F.sigmoid(<span class="va">self</span>._logit(out))</span></code></pre></div>
 </section>
 <section class="slide level3">
 
@@ -1460,15 +1443,21 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb46-1"><a h
 <section class="slide level3">
 
 <p><img data-src="images/clf_train_stats.png" style="width:50.0%" /></p>
-<pre class="text"><code>epoch 1 training loss = 0.5032: 100%|██████████| 666/666 [02:20&lt;00:00,  4.75it/s]
-epoch 2 training loss = 0.3639: 100%|██████████| 666/666 [02:02&lt;00:00,  5.42it/s]
-epoch 3 training loss = 0.3143: 100%|██████████| 666/666 [02:03&lt;00:00,  5.41it/s]
-epoch 4 training loss = 0.2705: 100%|██████████| 666/666 [02:08&lt;00:00,  5.16it/s]
+<pre class="text"><code>epoch 1 training loss = 0.4990: 100%|██████████| 666/666 [01:55&lt;00:00,  5.79it/s]
+epoch 2 training loss = 0.3885: 100%|██████████| 666/666 [01:36&lt;00:00,  6.88it/s]
+epoch 3 training loss = 0.3720: 100%|██████████| 666/666 [01:39&lt;00:00,  6.71it/s]
+epoch 4 training loss = 0.3598: 100%|██████████| 666/666 [01:37&lt;00:00,  6.83it/s]
+epoch 5 training loss = 0.3489: 100%|██████████| 666/666 [01:40&lt;00:00,  6.64it/s]
+epoch 6 training loss = 0.3366: 100%|██████████| 666/666 [01:39&lt;00:00,  6.71it/s]
+epoch 7 training loss = 0.3281: 100%|██████████| 666/666 [01:37&lt;00:00,  6.84it/s]
+epoch 8 training loss = 0.3177: 100%|██████████| 666/666 [01:37&lt;00:00,  6.82it/s]
+epoch 9 training loss = 0.3062: 100%|██████████| 666/666 [01:39&lt;00:00,  6.66it/s]
+epoch 10 training loss = 0.2988: 100%|██████████| 666/666 [01:36&lt;00:00,  6.90it/s]
 
 best model:
-|-- epoch: 3
-|-- validation loss: 0.3888</code></pre>
-<p>Note → training converged in under 10 minutes!</p>
+|-- epoch: 9
+|-- validation loss: 0.3843</code></pre>
+<p>Note → training converged in ~ 15 minutes!</p>
 </section>
 <section class="slide level3">
 
@@ -1481,10 +1470,10 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb48-1"><a h
 <span id="cb48-5"><a href="#cb48-5" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb48-6"><a href="#cb48-6" aria-hidden="true" tabindex="-1"></a>accuracy <span class="op">=</span> hits.item() <span class="op">/</span> (BATCH_SIZE <span class="op">*</span> <span class="bu">len</span>(test_dl))</span>
 <span id="cb48-7"><a href="#cb48-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;accuracy = </span><span class="sc">{</span>accuracy<span class="sc">:.1%}</span><span class="ss">&quot;</span>)</span>
-<span id="cb48-8"><a href="#cb48-8" aria-hidden="true" tabindex="-1"></a><span class="co"># accuracy = 84.1%</span></span></code></pre></div>
+<span id="cb48-8"><a href="#cb48-8" aria-hidden="true" tabindex="-1"></a><span class="co"># accuracy = 83.9%</span></span></code></pre></div>
 </section></section>
-<section id="conclusions" class="title-slide slide level2">
-<h2>Conclusions</h2>
+<section id="final-thoughts" class="title-slide slide level2">
+<h2>Final thoughts</h2>
 <div>
 <ul>
 <li class="fragment">We have achieved AutoNLP!</li>

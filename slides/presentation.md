@@ -20,7 +20,9 @@ The repo contains the source code for a Python package called `modelling`. This 
 
 ---
 
-The aim was to develop a platform for understanding how transformer models work, together with the (ML) engineering challenges that they pose.
+The aim was to develop a platform for understanding how transformer models work, together with the (ML) engineering challenges that they pose. 
+
+This talk is the abridged version of this work.
 
 ---
 
@@ -32,20 +34,19 @@ This project made heavy use of the [PyTorch](https://pytorch.org/docs/stable/ind
 
 ::: incremental
 
-1. The problem we're trying to solve
+1. The problem domain
 2. How to compute multi-head attention.
 3. Transformers: encoders, decoders, and all that.
 4. How I developed a generative LLM.
 5. Exciting things to try with this LLM.
-6. Conclusions (heavily opinionated).
 
 :::
 
-## The problem we're trying to solve
+## The problem domain
 
 ---
 
-Contemporary NLP according to Alex
+The state of applied NLP in 2023 (according to Alex)
 
 ![](images/paradigm.png){width=60%}
 
@@ -194,12 +195,6 @@ ___
 
 \- [Ben Recht](https://argmin.substack.com/p/my-mathematical-mind) (Prof. of Computer Sciences, UC Berkley)
 
----
-
-"*Deep learning is like riding a bicycle - it's not something you prove the existence of, it's just something you do.*"
-
-\- Dr Alex Ioannides (MLE Chapter Lead, LBG)
-
 ___
 
 ### When do we use encoders, decoders, or both?
@@ -213,18 +208,6 @@ ___
 :::
 
 ## How I developed a generative LLM
-
-<!--
-- the dataset
-- preparing the data - tokenisation
-- preparing the data - PyTorch DataLoaders
-- an aside on GPUs
-- benchmark - training an RNN.
-- using a generative model to generate text, given a prompt. 
-- training a transformer-decoder.
-    - positional encoding
-    - learning rate schedule
--->
 
 ### The data
 
@@ -269,6 +252,29 @@ Example #4 in full:
 *"Now being a fan of sci fi, the trailer for this film looked a bit too, how do i put it, hollywood. But after watching it i can gladly say it has impressed me greatly. Jude is a class actor and miss Leigh pulls it off better than she did in Delores Clairborne. It brings films like The Matrix, 12 Monkeys and The Cell into mind, which might not sound that appealing, but it truly is one of the best films i have seen."*
 
 ___
+
+### Chunking
+
+Most reviews are too long to be used as one input sequence and need to be broken into chunks. I chose a strategy based on preserving sentence integrity to create overlapping chunks that fall within a maximum sequence length.
+
+--- 
+
+Example with maximum sequence length of 30 words:
+
+```python
+full_text = """I've seen things you people wouldn't believe. Attack ships on fire off
+the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate.
+All those moments will be lost in time, like tears in rain."""
+
+chunk_one = """I've seen things you people wouldn't believe. Attack ships on fire off
+the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate."""
+
+chunk_three = """Attack ships on fire off the shoulder of Orion. I watched C-beams
+glitter in the dark near the Tannhäuser Gate."""
+
+chunk_four = """I watched C-beams glitter in the dark near the Tannhäuser Gate. All
+those moments will be lost in time, like tears in rain."""
+```
 
 ### Generating tokens
 
@@ -357,9 +363,13 @@ This is adequate for the current endeavor, but serious models use more sophistic
 
 ### Datasets and DataLoaders
 
-We would benefit from standardized interface for delivering data to our models during training, which in this case requires two token sequences (offset by one as we are developing generative models). PyTorch provides such an interface:
+PyTorch provides a framework for composing portable data pipelines that can be used with any model.
 
+`torch.utils.data.Dataset`
 `torch.utils.data.IterableDataset`
+`torch.utils.data.DataLoader`
+
+Our pipeline delivers pairs of token sequences with an offset of one token between them.
 
 ```python
 tokenized_reviews = [tokenizer(review) for review in reviews]
@@ -371,29 +381,6 @@ print(f"y[:5]: {y[:5]}")
 
 # x[:5]: tensor([831,  49,  11, 300,  44])
 # y[:5]: tensor([   49,    11,   300,    44, 37877])
-```
-
-### Chunking
-
-Most reviews are too long to be used as one input sequence and need to be broken into chunks. I chose a strategy based on preserving sentence integrity to create overlapping chunks that fall within a maximum sequence length.
-
---- 
-
-Example with maximum sequence length of 30 words:
-
-```python
-full_text = """I've seen things you people wouldn't believe. Attack ships on fire off
-the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate.
-All those moments will be lost in time, like tears in rain."""
-
-chunk_one = """I've seen things you people wouldn't believe. Attack ships on fire off
-the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate."""
-
-chunk_three = """Attack ships on fire off the shoulder of Orion. I watched C-beams
-glitter in the dark near the Tannhäuser Gate."""
-
-chunk_four = """I watched C-beams glitter in the dark near the Tannhäuser Gate. All
-those moments will be lost in time, like tears in rain."""
 ```
 
 ---
@@ -569,7 +556,7 @@ Note → can only process one token at a time.
 
 ---
 
-Define the training routine:
+Define a single training step:
 
 ```python
 def _train_step(
@@ -599,6 +586,8 @@ def _train_step(
 
 ---
 
+Define a single validation step:
+
 ```python
 @no_grad()
 def _val_step(
@@ -623,6 +612,8 @@ def _val_step(
 ```
 
 ---
+
+Define the full training routine:
 
 ```python
 def train(
@@ -882,6 +873,8 @@ class PositionalEncoding(Module):
         return self._dropout(x)
 ```
 
+Analagous to adding a watermark to each embedded token, to indicate its position in the sequence.
+
 ---
 
 Define the model:
@@ -961,7 +954,7 @@ Note → can process entire sequences at once.
 
 ---
 
-Define the training routine:
+Define a single training step:
 
 ```python
 def _train_step(
@@ -990,6 +983,8 @@ def _train_step(
 
 ---
 
+Define a single validation step:
+
 ```python
 @no_grad()
 def _val_step(
@@ -1007,6 +1002,8 @@ def _val_step(
 
 ---
 
+Set a learning rate schedule:
+
 ![](images/lr_schedule.png)
 
 ```python
@@ -1019,6 +1016,8 @@ def warmup_schedule(step: int, warmup_steps: int, max_steps: int):
 ```
 
 ---
+
+Define the full training routine:
 
 ```python
 def train(
@@ -1123,7 +1122,7 @@ MAX_EPOCHS = 30
 BATCH_SIZE = 32
 MAX_SEQ_LEN = 100
 MIN_SEQ_LEN = 10
-MIN_WORD_FREQ = 1
+MIN_WORD_FREQ = 2
 MAX_LEARNING_RATE = 0.001
 WARMUP_EPOCHS = 2
 GRADIENT_CLIP = 5
@@ -1220,10 +1219,6 @@ prompt = "This is a classic horror and"
 ### Semantic Search
 
 ```python
-# Load our best model.
-pre_trained_model: tfr.NextWordPredictionTransformer = utils.load_model(MODEL_NAME)
-
-# Adapt model to aggregate decoder output sequence to a single vector with size EMBEDDING_DIM.
 class DocumentEmbeddingTransformer(tfr.NextWordPredictionTransformer):
     """Adapting a generative model to yield text embeddings."""
 
@@ -1259,20 +1254,13 @@ Use adapted pre-trained model to index documents:
 
 ```python
 embeddings_db = []
-errors = []
 
 embedding_model.eval()
 with torch.no_grad():
     for i, review in enumerate(reviews):
-        try:
-            review_tokenized = tokenizer(reviews[i])[:CHUNK_SIZE]
-            review_embedding = embedding_model(torch.tensor([review_tokenized]))
-            embeddings_db.append(review_embedding)
-        except Exception:
-            errors.append(str(i))
-
-if errors:
-    print(f"ERRORS: {', '.join(errors)}")
+        review_tokenized = tokenizer(reviews[i])[:CHUNK_SIZE]
+        review_embedding = embedding_model(torch.tensor([review_tokenized]))
+        embeddings_db.append(review_embedding)
 
 embeddings_db = torch.stack(embeddings_db)
 ```
@@ -1309,11 +1297,6 @@ utils.print_wrapped(reviews[top_hit])
 ### Sentiment Classification
 
 ```python
-# Load our best model.
-pre_trained_model: tfr.NextWordPredictionTransformer = utils.load_model(MODEL_NAME)
-
-# Adapt model to aggregate decoder output sequence to a single vector with size EMBEDDING_DIM,
-# and pass this as features to a binary classification layer (logistic regression).
 class SentimentClassificationTransformer(tfr.NextWordPredictionTransformer):
     """Adapting a generative model to yield text embeddings."""
 
@@ -1331,12 +1314,8 @@ class SentimentClassificationTransformer(tfr.NextWordPredictionTransformer):
         self.load_state_dict(pre_trained_model.state_dict(), strict=False)
         self._logit = nn.Linear(pre_trained_model._size_embed, 1)
 
-        # Freeze pre-trained model layers.
         if freeze_pre_trained:
-            for p in self._embedding.parameters():
-                p.requires_grad = False
-
-            for p in self._position_encoder.parameters():
+            for p in chain(self._embedding.parameters(), self._decoder.parameters()):
                 p.requires_grad = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -1352,8 +1331,7 @@ class SentimentClassificationTransformer(tfr.NextWordPredictionTransformer):
             memory_key_padding_mask=x_padding_mask,
         )
         out = torch.max(out, dim=1).values
-        out = F.sigmoid(self._logit(out))
-        return out
+        return F.sigmoid(self._logit(out))
 ```
 
 ---
@@ -1407,7 +1385,7 @@ print(f"accuracy = {accuracy:.1%}")
 # accuracy = 83.9%
 ```
 
-## Conclusions
+## Final thoughts
 
 ::: incremental
 
