@@ -954,7 +954,7 @@ dummy_token_sequence = torch.tensor([[42, 42, 42]])
 output_seq_logits = model(dummy_token_sequence)
 
 print(output_seq_logits.size())
-# torch.Size([1, 3, 133046])
+# torch.Size([1, 3, 69014])
 ```
 
 Note → can process entire sequences at once.
@@ -1116,7 +1116,7 @@ def train(...) -> Tuple[Dict[int, float], Dict[int, float], ModelCheckpoint]:
 Train the model:
 
 ```python
-# Hyper-parameters that lead to a model with 406,306 parameters.
+# Hyper-parameters that lead to a model with 214,210 parameters.
 SIZE_EMBED = 256
 
 MAX_EPOCHS = 30
@@ -1135,15 +1135,15 @@ GRADIENT_CLIP = 5
 
 ```text
 number of warmup steps: 33692 / 505380
-epoch 1 training loss = 6.0603 (LR = 0.00049863): 100%|██████████| 16846/16846 [1:40:23<00:00,  2.80it/s]
-epoch 2 training loss = 5.2419 (LR = 0.00098907): 100%|██████████| 16846/16846 [1:40:26<00:00,  2.80it/s]
-epoch 3 training loss = 5.0985 (LR = 0.00097553): 100%|██████████| 16846/16846 [1:40:29<00:00,  2.79it/s]
-epoch 4 training loss = 4.9940 (LR = 0.00095677): 100%|██████████| 16846/16846 [1:40:31<00:00,  2.79it/s]
-epoch 5 training loss = 4.9635 (LR = 0.00093301): 100%|██████████| 16846/16846 [1:40:30<00:00,  2.79it/s]
+epoch 1 training loss = 5.9463 (LR = 0.00049863): 100%|██████████| 16846/16846 [51:35<00:00,  5.44it/s]
+epoch 2 training loss = 5.1662 (LR = 0.00098907): 100%|██████████| 16846/16846 [51:32<00:00,  5.45it/s]
+epoch 3 training loss = 5.0460 (LR = 0.00097553): 100%|██████████| 16846/16846 [51:32<00:00,  5.45it/s]
+epoch 4 training loss = 4.9569 (LR = 0.00095677): 100%|██████████| 16846/16846 [51:32<00:00,  5.45it/s]
+epoch 5 training loss = 4.9277 (LR = 0.00093301): 100%|██████████| 16846/16846 [51:33<00:00,  5.45it/s]
 
 best model:
 |-- epoch: 3
-|-- validation loss: 5.1783
+|-- validation loss: 5.0740
 ```
 
 ### Generating text from the decoder model
@@ -1207,12 +1207,12 @@ Then take a look at what a top-5 decoding strategy yields with the trained model
 ```python
 prompt = "This is a classic horror and"
 
-# ==> THIS IS A CLASSIC HORROR AND a good movie. If youre looking for a good laugh at it.
-# It is the worst movie ever made. I think it was not. It was a very good thing. Its a
-# shame that this film was made in a movie. The acting is good. The acting is good and the
-# only good thing about it. The movie is that I was really disappointed with this one. This
-# movie is so much of the movie. The acting is good. Its not good. I dont watch it was
-# terrible...
+# ==> THIS IS A CLASSIC HORROR AND a good story with the great cast. Its a shame that the
+# story has been a bit of one night of my favourite actors. This is an amazing and it was
+# very good for the film to watch but it has a few decent moments that is not even the best
+# part in the entire film but this one was a good movie for a little long after all of it
+# it is so much more about this. If you havent already see a lot to see it. I dont. It is.
+# I recommend...
 ```
 
 ## Exciting things to try with this LLM
@@ -1386,7 +1386,7 @@ for x_batch, y_batch in test_dl:
 
 accuracy = hits.item() / (BATCH_SIZE * len(test_dl))
 print(f"accuracy = {accuracy:.1%}")
-# accuracy = 84.1%
+# accuracy = 83.8%
 ```
 
 ## Conclusions
