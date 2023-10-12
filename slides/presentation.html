@@ -106,7 +106,7 @@
 <section id="title-slide">
   <h1 class="title">Transformers &amp; LLMs</h1>
   <p class="author">Alex Ioannides</p>
-  <p class="date">October 12th, 2023</p>
+  <p class="date">October 12<sup>th</sup>, 2023</p>
 </section>
 
 <section>
@@ -186,8 +186,9 @@ class="title-slide slide level2">
 <h2>How to compute multi-head attention</h2>
 
 </section>
-<section id="lets-start-with-self-attention" class="slide level3">
-<h3>Let’s start with self-attention</h3>
+<section id="lets-start-with-self-attention-a-single-head"
+class="slide level3">
+<h3>Let’s start with self-attention &amp; a single head</h3>
 </section>
 <section class="slide level3">
 
@@ -277,6 +278,26 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a hr
 three separate linear network layers and using the outputs within the
 self-attention mechanism.</p>
 </section>
+<section class="slide level3">
+
+<p>More formally…</p>
+<p><span class="math display">\[
+a_{ij} \to b_{ij} = c \times \vec{q_{i}^{T}} \cdot \vec{k_{i}}
+\]</span></p>
+<p>Where <span class="math inline">\(c\)</span> is a normalisation
+constant. Thus,</p>
+<p><span class="math display">\[
+\vec{x_{i}} \to \vec{z_{i}} = \sum_{j=1}^{N}{b_{ij} \times \vec{v_{j}}}
+\]</span></p>
+</section>
+<section class="slide level3">
+
+<p><em>Conceptially</em> inspired by…</p>
+<p><img data-src="images/queries_keys_values.png"
+style="width:50.0%" /></p>
+<p>i.e., we learn how to map a sequence of embeddings into queries, keys
+and values 🤨</p>
+</section>
 <section id="from-single-to-multiple-attention-heads"
 class="slide level3">
 <h3>From single to multiple attention heads</h3>
@@ -311,9 +332,8 @@ class="title-slide slide level2">
 </section>
 <section class="slide level3">
 
-<p>Encoder-decoder for seq-to-seq translation</p>
-<p><img data-src="images/encoder_decoder.png" style="width:40.0%" /></p>
-<p>- “<em>Attention is all you Need</em>”, Vaswani et al. (2017)</p>
+<p>An encoder block:</p>
+<p><img data-src="images/encoder.png" style="width:35.0%" /></p>
 </section>
 <section class="slide level3">
 
@@ -333,6 +353,13 @@ some nonpredictive post hoc justifications… deep learning seems to drive
 people completely insane.</em>”</p>
 <p>- <a href="https://argmin.substack.com/p/my-mathematical-mind">Ben
 Recht</a> (Prof. of Computer Sciences, UC Berkley)</p>
+</section>
+<section class="slide level3">
+
+<p>A decoder block:</p>
+<p><img data-src="images/decoder.png" style="width:20.0%" /></p>
+<p>Note → two multi-head attention blocks and the embedding sequence is
+added back in as the values 🤔</p>
 </section>
 <section id="when-do-we-use-encoders-decoders-or-both"
 class="slide level3">
@@ -856,6 +883,11 @@ best model:
 </section>
 <section id="text-generation-strategies" class="slide level3">
 <h3>Text generation strategies</h3>
+<p><img data-src="images/text_generation.png" style="width:75.0%" /></p>
+</section>
+<section class="slide level3">
+
+<h4 id="comomon-algorithms">Comomon algorithms</h4>
 <div class="sourceCode" id="cb23"><pre
 class="sourceCode python"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _sample_decoding(logits: Tensor, temperature: <span class="bu">float</span> <span class="op">=</span> <span class="fl">1.0</span>) <span class="op">-&gt;</span> Tensor:</span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Generate next token using sample decoding strategy.&quot;&quot;&quot;</span></span>

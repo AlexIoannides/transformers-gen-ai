@@ -1,7 +1,7 @@
 ---
 title: Transformers & LLMs
 author: Alex Ioannides
-date: October 12th, 2023
+date: October 12<sup>th</sup>, 2023
 ---
 
 ## The story of one man's mission not to get left behind in the dust
@@ -58,7 +58,7 @@ The role that attention plays in all this...
 
 ## How to compute multi-head attention
 
-### Let's start with self-attention
+### Let's start with self-attention & a single head
 
 ---
 
@@ -148,6 +148,28 @@ context_weighted_embeddings_param = torch.matmul(attn_weights_param_norm, v)
 
 This is equivalent to passing `embedded_tokens` through three separate linear network layers and using the outputs within the self-attention mechanism.
 
+---
+
+More formally...
+
+$$
+a_{ij} \to b_{ij} = c \times \vec{q_{i}^{T}} \cdot \vec{k_{i}}
+$$
+
+Where $c$ is a normalisation constant. Thus,
+
+$$
+\vec{x_{i}} \to \vec{z_{i}} = \sum_{j=1}^{N}{b_{ij} \times \vec{v_{j}}}
+$$
+
+---
+
+*Conceptially* inspired by...
+
+![](images/queries_keys_values.png){width=50%}
+
+i.e., we learn how to map a sequence of embeddings into queries, keys and values 🤨
+
 ### From single to multiple attention heads
 
 ![](images/multi_head_attention.png)
@@ -177,13 +199,11 @@ How do we arrive at
 
 ---
 
-Encoder-decoder for seq-to-seq translation
+An encoder block:
 
-![](images/encoder_decoder.png){width=40%}
+![](images/encoder.png){width=35%}
 
-\- "*Attention is all you Need*", Vaswani et al. (2017)
-
-___
+---
 
 "*... adding residual connections, adding normalization layers—all of these are standard architecture patterns that one would be wise to leverage in any complex model. Together, these bells and whistles form the Transformer encoder—one of two critical parts that make up the Transformer architecture*”
 
@@ -194,6 +214,14 @@ ___
 "*We stare into the void where our math fails us and try to write math papers anyway... We could then turn to the deepness itself and prove things about batch norm or dropout or whatever, but these just give us some nonpredictive post hoc justifications... deep learning seems to drive people completely insane.*"
 
 \- [Ben Recht](https://argmin.substack.com/p/my-mathematical-mind) (Prof. of Computer Sciences, UC Berkley)
+
+___
+
+A decoder block:
+
+![](images/decoder.png){width=20%}
+
+Note → two multi-head attention blocks and the embedding sequence is added back in as the values 🤔
 
 ___
 
@@ -729,6 +757,12 @@ best model:
 ---
 
 ### Text generation strategies
+
+![](images/text_generation.png){width=75%}
+
+---
+
+#### Comomon algorithms
 
 ```python
 def _sample_decoding(logits: Tensor, temperature: float = 1.0) -> Tensor:
