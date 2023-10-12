@@ -1419,6 +1419,8 @@ print(f"accuracy = {accuracy:.1%}")
 # accuracy = 83.9%
 ```
 
+Pretty reasonable given that the classes are almost perfectly balanced in the test set.
+
 ## Final thoughts
 
 ::: incremental
