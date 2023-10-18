@@ -1,6 +1,6 @@
 # Transformers and Language Models
 
-This purpose of this repository is to act as an entry-point to the world of transformer-based language modelling in PyTorch. It is pitched to those of us that want to understand implementation details and theoretical insights, without having to wade through badly written research code 🙂
+This purpose of this repository is to act as an entry-point to the world of transformer-based language modelling in PyTorch. It is pitched to those of us that want to understand implementation details and grasp theoretical insights, without having to wade through badly written research code 🙂
 
 All code has been structured into a Python package called `modelling`, that is organised as follows:
 
@@ -25,6 +25,8 @@ notebooks
 └── 5_pre_trained_transformers_for_sentiment_analysis.ipynb
 ```
 
+These will guide you through steps required to use the code contaied within the `modelling` package to train a language model and then use it to perform semantic search and sentiment classification tasks.
+
 ## Installing
 
 To run the notebooks and use the code within the `src/modelling` directory either clone this repository and install the package directly from the source code,
@@ -38,6 +40,10 @@ Or install it directly from this repository,
 ```text
 pip install git+https://github.com/AlexIoannides/transformers.git@main
 ```
+
+## Presentation Slides
+
+An HTML (and PDF) presentation of this work is contained in the `presentation_slides` directory.
 
 ## Useful Resources
 
