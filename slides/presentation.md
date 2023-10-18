@@ -153,7 +153,7 @@ This is equivalent to passing `embedded_tokens` through three separate linear ne
 More formally...
 
 $$
-a_{ij} \to b_{ij} = c \times \vec{q_{i}^{T}} \cdot \vec{k_{i}}
+a_{ij} \to b_{ij} = c \times \vec{q_{i}} \cdot \vec{k_{i}}
 $$
 
 Where $c$ is a normalisation constant. Thus,

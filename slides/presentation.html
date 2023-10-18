@@ -153,16 +153,15 @@ style="width:50.0%" /></p>
 <section id="what-im-intending-to-talk-about"
 class="title-slide slide level2">
 <h2>What I’m intending to talk about</h2>
-<div>
+<!-- ::: incremental -->
 <ol type="1">
-<li class="fragment">The problem domain</li>
-<li class="fragment">How to compute multi-head attention.</li>
-<li class="fragment">Transformers: encoders, decoders, and all
-that.</li>
-<li class="fragment">How I developed a generative LLM.</li>
-<li class="fragment">Exciting things to try with this LLM.</li>
+<li>The problem domain</li>
+<li>How to compute multi-head attention.</li>
+<li>Transformers: encoders, decoders, and all that.</li>
+<li>How I developed a generative LLM.</li>
+<li>Exciting things to try with this LLM.</li>
 </ol>
-</div>
+<!-- ::: -->
 </section>
 
 <section>
@@ -282,7 +281,7 @@ self-attention mechanism.</p>
 
 <p>More formally…</p>
 <p><span class="math display">\[
-a_{ij} \to b_{ij} = c \times \vec{q_{i}^{T}} \cdot \vec{k_{i}}
+a_{ij} \to b_{ij} = c \times \vec{q_{i}} \cdot \vec{k_{i}}
 \]</span></p>
 <p>Where <span class="math inline">\(c\)</span> is a normalisation
 constant. Thus,</p>
@@ -364,15 +363,14 @@ added back in as the values 🤔</p>
 <section id="when-do-we-use-encoders-decoders-or-both"
 class="slide level3">
 <h3>When do we use encoders, decoders, or both?</h3>
-<div>
+<!-- ::: incremental -->
 <ul>
-<li class="fragment"><strong>Encoder</strong>: pure embedding
+<li><strong>Encoder</strong>: pure embedding models.</li>
+<li><strong>Decoder</strong>: generative models.</li>
+<li><strong>Encoder + Decoder</strong>: sequence-to-sequence
 models.</li>
-<li class="fragment"><strong>Decoder</strong>: generative models.</li>
-<li class="fragment"><strong>Encoder + Decoder</strong>:
-sequence-to-sequence models.</li>
 </ul>
-</div>
+<!-- ::: -->
 </section></section>
 <section>
 <section id="how-i-developed-a-generative-llm"
@@ -1508,12 +1506,12 @@ balanced in the test set.</p>
 </section></section>
 <section id="final-thoughts" class="title-slide slide level2">
 <h2>Final thoughts</h2>
-<div>
+<!-- ::: incremental -->
 <ul>
-<li class="fragment">We have achieved AutoNLP!</li>
-<li class="fragment">There is a lot of engineering involved.</li>
+<li>We have achieved AutoNLP!</li>
+<li>There is a lot of engineering involved.</li>
 </ul>
-</div>
+<!-- ::: -->
 </section>
     </div>
   </div>
